@@ -167,7 +167,7 @@ elif view == "Live Scoring (Admin)":
         
         # Player 1 Col (Home)
         with pc1:
-            st.write(f"**{pairing['home_player']}**")
+            st.write(f"**{pairing['L&B_Player']}**")
             if pairing['leader'] == 'home':
                 st.markdown(f"<div style='background-color: darkred; color: white; text-align: center; padding: 5px;'>{pairing['score']}</div>", unsafe_allow_html=True)
             elif pairing['leader'] == 'tied':
