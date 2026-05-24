@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -27,10 +26,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# L&B Corporate Colors (Extracted from Logo/Documents)
-LB_COLOR = "#2A623D"   # Forest Green
-OPP_COLOR = "#6B8EAD"  # Castle Blue
-TIE_COLOR = "#D4AF37"  # Gold/Yellow
+# Modern, Premium Color Palette (Avoiding ClubNet Colors & Gold)
+LB_COLOR = "#0D4722"   # Deep Pine Green
+OPP_COLOR = "#4A5568"  # Sophisticated Slate
+TIE_COLOR = "#A0AEC0"  # Clean Ash Silver
 
 # --- TIMEZONE SETUP ---
 ireland_tz = ZoneInfo("Europe/Dublin")
@@ -152,7 +151,14 @@ else:
 
 # --- VIEW 1: PUBLIC SCOREBOARD (Read Only) ---
 if view == "Public Scoreboard":
-    st.markdown("<h2 style='text-align: center; font-weight: 700;'>L&B Match Centre</h2>", unsafe_allow_html=True)
+    
+    # Header with Automatic Logo Fetching
+    st.markdown("""
+        <div style="text-align: center; padding-bottom: 5px;">
+            <img src="https://logo.clearbit.com/landbgolfclub.ie" alt="L&B Logo" style="max-height: 110px; margin-bottom: 10px;" onerror="this.style.display='none'"/>
+            <h2 style='font-weight: 700; margin-top: 0px;'>L&B Match Centre</h2>
+        </div>
+    """, unsafe_allow_html=True)
     st.divider()
     
     if not has_comps:
