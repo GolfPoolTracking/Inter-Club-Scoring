@@ -1,12 +1,16 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import time
 from supabase import create_client
 import urllib.parse
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="L&B Live Scoring", layout="centered", initial_sidebar_state="expanded")
+
+# --- TIMEZONE SETUP ---
+ireland_tz = ZoneInfo("Europe/Dublin")
 
 # --- LIST DEFINITIONS ---
 HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
@@ -125,22 +129,27 @@ if view == "Public Scoreboard":
     for comp_name, data in matches_data.items():
         lb_score, opp_score = calculate_overall_score(comp_name, matches_data)
         
-        st.markdown(f"<h4 style='text-align: center; margin-bottom: 0px;'>{data['raw_comp_name']}</h4>", unsafe_allow_html=True)
-        st.markdown(f"<p style='text-align: center; color: gray; font-size: 14px;'>{data['category']}</p>", unsafe_allow_html=True)
+        # Clean up the category name for display
+        display_category = "Mens" if data['category'] == "Men" else data['category']
+        full_title = f"{display_category} {data['raw_comp_name']}".strip()
         
-        col1, col2, col3, col4, col5 = st.columns([1, 2, 1, 2, 1])
+        st.markdown(f"<h3 style='text-align: center; margin-bottom: 25px;'>{full_title}</h3>", unsafe_allow_html=True)
+        
+        col1, col2, col3, col4, col5 = st.columns([1, 4, 1, 4, 1])
         with col2:
             st.write("<div style='text-align: center;'><b>L&B</b></div>", unsafe_allow_html=True)
             st.markdown(f"<div style='background-color: darkblue; color: white; padding: 15px; font-size: 24px; text-align: center; border-radius: 5px;'><b>{lb_score}</b></div>", unsafe_allow_html=True)
         with col3:
-            st.markdown("<h2 style='text-align: center; padding-top:20px;'>:</h2>", unsafe_allow_html=True)
+            # Replaced header tag with a perfectly centered div
+            st.markdown("<div style='text-align: center; font-size: 40px; font-weight: bold; padding-top: 22px;'>:</div>", unsafe_allow_html=True)
         with col4:
             st.write(f"<div style='text-align: center;'><b>{data['opposition_team']}</b></div>", unsafe_allow_html=True)
             st.markdown(f"<div style='background-color: darkred; color: white; padding: 15px; font-size: 24px; text-align: center; border-radius: 5px;'><b>{opp_score}</b></div>", unsafe_allow_html=True)
         
         st.write("&nbsp;") 
         
-        with st.expander(f"View Pairings (Last updated: {datetime.now().strftime('%H:%M')})"):
+        current_time_str = datetime.now(ireland_tz).strftime('%H:%M')
+        with st.expander(f"View Pairings (Last updated: {current_time_str})"):
             if not data["pairings"]:
                 st.write("Pairings to be announced.")
             else:
@@ -341,7 +350,7 @@ elif view == "Admin Console":
                 
                 e_status = st.selectbox("Overall Status Override", ["Not Started", "LIVE", "FINISHED"], index=["Not Started", "LIVE", "FINISHED"].index(comp_data.get('status', 'Not Started')))
                 
-                e_date = st.date_input("Match Date", value=datetime.strptime(comp_data['date'], "%Y-%m-%d").date() if comp_data['date'] else datetime.today())
+                e_date = st.date_input("Match Date", value=datetime.strptime(comp_data['date'], "%Y-%m-%d").date() if comp_data['date'] else datetime.now(ireland_tz).date())
                 
                 if st.form_submit_button("Update Competition"):
                     try:
