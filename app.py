@@ -421,4 +421,51 @@ elif view == "Admin Console":
             if not pairings_list:
                 st.info("No matches in this competition.")
             else:
-                pairing_options = {f"{p.get('landb_player')} vs {p.get('opposition_player')}": p
+                pairing_options = {f"{p.get('landb_player')} vs {p.get('opposition_player')}": p for p in pairings_list}
+                selected_pairing_str = st.selectbox("Select Match to Edit", list(pairing_options.keys()))
+                p_data = pairing_options[selected_pairing_str]
+                
+                with st.form("edit_match_form"):
+                    col1, col2 = st.columns(2)
+                    e_lb_player = col1.text_input("L&B Player", value=p_data.get('landb_player', ''))
+                    e_opp_player = col2.text_input("Opposition Player", value=p_data.get('opposition_player', ''))
+                    
+                    e_venue = st.selectbox("Venue", VENUE_OPTIONS, index=safe_index(VENUE_OPTIONS, p_data.get('venue', 'Home')))
+                    
+                    if st.form_submit_button("Update Match Details"):
+                        try:
+                            supabase.table('pairings').update({
+                                "landb_player": e_lb_player,
+                                "opposition_player": e_opp_player,
+                                "venue": e_venue
+                            }).eq('id', p_data['id']).execute()
+                            st.success("Match Updated!")
+                            time.sleep(1.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Database Error: {e}")
+                            
+                st.divider()
+                if st.checkbox(f"I want to permanently delete {selected_pairing_str}", key="del_match_check"):
+                    if st.button("🚨 Delete Match 🚨", type="primary"):
+                        try:
+                            supabase.table('pairings').delete().eq('id', p_data['id']).execute()
+                            st.success("Match deleted.")
+                            time.sleep(1.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Database Error: {e}")
+
+    # --- TAB 5: MANAGER LINKS ---
+    with tab5:
+        st.subheader("Distribute Manager Links")
+        st.write("Send these links to your team managers. When they click the link, the app will lock them into their specific competition with no admin controls.")
+        
+        st.info("**Instructions:** Copy the text block below and add it to the very end of your main Streamlit App URL.")
+        
+        for comp_name in matches_data.keys():
+            safe_comp_name = urllib.parse.quote(comp_name)
+            link_extension = f"/?role=manager&comp={safe_comp_name}"
+            
+            st.markdown(f"**{comp_name}**")
+            st.code(link_extension, language="text")
