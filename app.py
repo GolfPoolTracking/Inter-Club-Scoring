@@ -6,43 +6,35 @@ import time
 from supabase import create_client
 import urllib.parse
 
-# --- CONFIGURATION & STYLING ---
-st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="expanded")
+# --- CONFIGURATION ---
+st.set_page_config(page_title="L&B Match Centre", layout="centered")
 
-# Inject Noto Serif font while preserving Streamlit's native icon fonts
+# Inject Noto Serif font safely
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap');
-    
-    /* Apply font only to text elements, avoiding the icon-specific classes */
-    div, p, h1, h2, h3, h4, h5, h6, .stMarkdown, .stButton, .stRadio, .stCheckbox {
-        font-family: 'Noto Serif', serif !important;
-    }
+    div, p, h1, h2, h3, h4, h5, h6, .stMarkdown, .stButton, .stRadio, .stCheckbox { font-family: 'Noto Serif', serif !important; }
     </style>
 """, unsafe_allow_html=True)
 
 # L&B Palette
-LB_COLOR = "#0D4722"   # Pine Green
-OPP_COLOR = "#6B8EAD"  # Castle Blue
-TIE_COLOR = "#A0AEC0"  # Ash Silver
-
-# --- HELPERS ---
+LB_COLOR, OPP_COLOR, TIE_COLOR = "#0D4722", "#6B8EAD", "#A0AEC0"
 ireland_tz = ZoneInfo("Europe/Dublin")
 supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-def get_dynamic_comp_status(pairings):
-    if not pairings: return "Not Started"
-    statuses = [p['status'] for p in pairings]
-    return "LIVE" if "LIVE" in statuses else ("FINISHED" if all(s == "FINISHED" for s in statuses) else "Not Started")
-
-def calculate_overall_score(pairings):
-    lb, opp = 0.0, 0.0
-    for p in pairings:
-        if p["status"] in ["LIVE", "FINISHED"]:
-            if p["leader"] == "L&B": lb += 1.0
-            elif p["leader"] == "Opposition": opp += 1.0
-            else: lb += 0.5; opp += 0.5
-    return lb, opp
+# --- HELPER FUNCTIONS ---
+def calculate_score_state(score_string):
+    """
+    Standardizes score input: Returns (leader, display_score_lb, display_score_opp)
+    Score string is always relative to L&B (e.g., '2 Up', '1 Down', 'All Square')
+    """
+    if "Up" in score_string:
+        val = score_string.replace(" Up", "")
+        return "L&B", f"{val} Up", f"{val} Down"
+    elif "Down" in score_string:
+        val = score_string.replace(" Down", "")
+        return "Opposition", f"{val} Down", f"{val} Up"
+    return "Tied", "All Square", "All Square"
 
 # --- NAVIGATION ---
 query_params = st.query_params
@@ -74,14 +66,19 @@ if view == "Public Scoreboard":
         c3.markdown(f"<div style='text-align: center;'><b>{comp['opposition_team']}</b></div><div style='background:{OPP_COLOR}; color:white; padding:15px; text-align:center; border-radius:5px;'>{opp}</div>", unsafe_allow_html=True)
         
         with st.expander(f"View Pairings (Last updated: {datetime.now(ireland_tz).strftime('%H:%M')})"):
-            for p in comp_pairings:
-                # Scores Above Names
-                s1, s2 = st.columns(2)
-                s1.markdown(f"<div style='background:{LB_COLOR if p['leader']=='L&B' else TIE_COLOR}; color:white; text-align:center; border-radius:3px; font-weight:bold;'>{p['score']}</div>", unsafe_allow_html=True)
-                s2.markdown(f"<div style='background:{OPP_COLOR if p['leader']=='Opposition' else TIE_COLOR}; color:white; text-align:center; border-radius:3px; font-weight:bold;'>{p['score'].replace('Down', 'Up')}</div>", unsafe_allow_html=True)
-                n1, n2 = st.columns(2)
-                n1.write(f"**{p.get('landb_player')}**"); n2.write(f"**{p.get('opposition_player')}**")
-                st.write("---")
+            for pairing in comp_pairings:
+    leader, lb_disp, opp_disp = calculate_score_state(pairing['score'])
+    
+    # 1. Scores Row
+    col1, col2 = st.columns(2)
+    col1.markdown(f"<div style='background:{LB_COLOR if leader=='L&B' else TIE_COLOR}; color:white; text-align:center; border-radius:3px; font-weight:bold;'>{lb_disp}</div>", unsafe_allow_html=True)
+    col2.markdown(f"<div style='background:{OPP_COLOR if leader=='Opposition' else TIE_COLOR}; color:white; text-align:center; border-radius:3px; font-weight:bold;'>{opp_disp}</div>", unsafe_allow_html=True)
+    
+    # 2. Names Row
+    name1, name2 = st.columns(2)
+    name1.write(f"**{pairing.get('landb_player', 'TBD')}**")
+    name2.write(f"**{pairing.get('opposition_player', 'TBD')}**")
+    st.write("---")
         st.divider()
 
 # --- VIEW 2: MANAGER PORTAL (Live Scoring Updates) ---
