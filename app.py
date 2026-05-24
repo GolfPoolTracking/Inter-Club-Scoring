@@ -9,14 +9,13 @@ import urllib.parse
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# Inject Noto Serif font safely
+# Inject Noto Serif font safely and hide default menus
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap');
     div, p, h1, h2, h3, h4, h5, h6, .stMarkdown, .stButton, .stRadio, .stCheckbox { 
         font-family: 'Noto Serif', serif !important; 
     }
-    /* Hide the default Streamlit top menu and footer for a cleaner look */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     </style>
@@ -56,6 +55,66 @@ def calculate_overall_score(pairings):
 
 def safe_index(lst, val): return lst.index(val) if val in lst else 0
 
+# --- HTML GENERATORS (FOR MOBILE-SAFE SIDE-BY-SIDE LAYOUTS) ---
+def generate_scoreboard_html(lb_score, opp_score, opp_team_name):
+    return f"""
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto;">
+        <div style="flex: 2; text-align: center; padding: 0 10px;">
+            <div style="font-weight: bold; margin-bottom: 5px; font-size: 16px;">L&B</div>
+            <div style="background-color: {LB_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;">{lb_score}</div>
+        </div>
+        <div style="flex: 1; text-align: center; font-size: 35px; font-weight: bold; padding-top: 25px;">
+            :
+        </div>
+        <div style="flex: 2; text-align: center; padding: 0 10px;">
+            <div style="font-weight: bold; margin-bottom: 5px; font-size: 16px;">{opp_team_name}</div>
+            <div style="background-color: {OPP_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;">{opp_score}</div>
+        </div>
+    </div>
+    """
+
+def generate_pairing_html(p, view_mode="public"):
+    # L&B Score Block
+    if p['leader'] == 'L&B':
+        lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{p['score']}</div>"
+    elif p['leader'] == 'Tied':
+        lb_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>ALL SQUARE</div>"
+    else:
+        # Invisible spacer maintains exact height to keep names perfectly aligned
+        lb_score_html = f"<div style='padding: 4px; visibility: hidden;'>Spacer</div>"
+        
+    # Opp Score Block
+    if p['leader'] == 'Opposition':
+        opp_score_html = f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{p['score'].replace('Down', 'Up')}</div>"
+    elif p['leader'] == 'Tied':
+        opp_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>ALL SQUARE</div>"
+    else:
+        opp_score_html = f"<div style='padding: 4px; visibility: hidden;'>Spacer</div>"
+        
+    hole_val = str(p.get('hole', '1'))
+    hole_display = f"Hole {hole_val}" if hole_val.isdigit() else hole_val 
+    p_status_color = "gray" if p['status'] == "Not Started" else ("darkred" if p['status'] == "FINISHED" else "#8bc34a")
+    
+    venue_html = f"<div style='font-size: 11px; color: gray; margin-top: 4px;'>📍 {p.get('venue', 'Unknown')}</div>" if view_mode == "manager" else ""
+    
+    return f"""
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 10px;">
+        <div style="flex: 1; text-align: center; padding: 0 4px; width: 33%;">
+            {lb_score_html}
+            <div style="font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;">{p.get('landb_player', 'TBD')}</div>
+            {venue_html}
+        </div>
+        <div style="flex: 1; text-align: center; padding: 0 4px; width: 33%;">
+            <div style="background-color: black; color: white; padding: 2px; font-size: 13px; border-radius: 3px; margin-bottom: 4px;">{hole_display}</div>
+            <div style="background-color: {p_status_color}; color: white; padding: 2px; font-size: 11px; font-weight: bold; border-radius: 3px;">{p['status']}</div>
+        </div>
+        <div style="flex: 1; text-align: center; padding: 0 4px; width: 33%;">
+            {opp_score_html}
+            <div style="font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;">{p.get('opposition_player', 'TBD')}</div>
+        </div>
+    </div>
+    """
+
 # --- LIST DEFINITIONS ---
 HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
 SCORE_OPTIONS = ["All Square"] + [f"{i} Up" for i in range(1, 10)] + [f"{i} Down" for i in range(1, 10)]
@@ -75,7 +134,6 @@ def fetch_all():
 comps, pairings = fetch_all()
 
 # --- SECURE URL ROUTING ---
-# The app now routes entirely based on the URL parameters. No sidebar menu!
 query_params = st.query_params
 role = query_params.get("role", "public")
 
@@ -92,7 +150,6 @@ if role == "public":
     
     for comp in comps:
         comp_pairings = [p for p in pairings if p["competition_id"] == comp["id"]]
-        # Sort pairings by ID to ensure Match 1, Match 2 order
         comp_pairings = sorted(comp_pairings, key=lambda x: x['id'])
         
         lb, opp = calculate_overall_score(comp_pairings)
@@ -101,22 +158,11 @@ if role == "public":
         st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>{comp['category']} {comp['comp_name']}</h3>", unsafe_allow_html=True)
         st.markdown(f"<div style='text-align: center;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
         
-        c1, c2, c3, c4, c5 = st.columns([1, 4, 1, 4, 1])
-        c2.markdown(f"<div style='text-align:center; font-weight:bold;'>L&B</div><div style='background:{LB_COLOR}; color:white; padding:10px; text-align:center; border-radius:5px; font-weight:bold; font-size:20px;'>{lb}</div>", unsafe_allow_html=True)
-        c3.markdown("<div style='text-align:center; font-size:30px; font-weight:bold; padding-top:20px;'>:</div>", unsafe_allow_html=True)
-        c4.markdown(f"<div style='text-align:center; font-weight:bold;'>{comp['opposition_team']}</div><div style='background:{OPP_COLOR}; color:white; padding:10px; text-align:center; border-radius:5px; font-weight:bold; font-size:20px;'>{opp}</div>", unsafe_allow_html=True)
+        st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team']), unsafe_allow_html=True)
         
         with st.expander(f"View Pairings (Last updated: {datetime.now(ireland_tz).strftime('%H:%M')})"):
             for p in comp_pairings:
-                s1, s2 = st.columns(2)
-                lb_disp = p['score'] if p['leader'] == 'L&B' else (p['score'] if p['leader'] == 'Tied' else p['score'].replace('Up', 'Down'))
-                opp_disp = p['score'] if p['leader'] == 'Opposition' else (p['score'] if p['leader'] == 'Tied' else p['score'].replace('Down', 'Up'))
-                
-                s1.markdown(f"<div style='background:{LB_COLOR if p['leader']=='L&B' else TIE_COLOR}; color:white; text-align:center; border-radius:3px; font-weight:bold; padding:3px; margin-bottom:5px;'>{lb_disp}</div>", unsafe_allow_html=True)
-                s2.markdown(f"<div style='background:{OPP_COLOR if p['leader']=='Opposition' else TIE_COLOR}; color:white; text-align:center; border-radius:3px; font-weight:bold; padding:3px; margin-bottom:5px;'>{opp_disp}</div>", unsafe_allow_html=True)
-                n1, n2 = st.columns(2)
-                n1.write(f"**{p.get('landb_player')}**")
-                n2.write(f"**{p.get('opposition_player')}**")
+                st.markdown(generate_pairing_html(p, "public"), unsafe_allow_html=True)
                 st.write("---")
         st.divider()
 
@@ -130,20 +176,31 @@ elif role == "manager":
         comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], key=lambda x: x['id'])
         
         lb, opp = calculate_overall_score(comp_pairings)
-        st.markdown(f"<p style='text-align: center;'>Live Score: L&B <b>{lb}</b> - <b>{opp}</b> {comp['opposition_team']}</p>", unsafe_allow_html=True)
+        status = get_comp_status(comp_pairings)
+        
+        st.markdown(f"<p style='text-align: center; margin-bottom: 5px;'>Live Score: L&B <b>{lb}</b> - <b>{opp}</b> {comp['opposition_team']}</p>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; margin-bottom: 20px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold; font-size: 12px;'>{status}</span></div>", unsafe_allow_html=True)
         st.divider()
         
+        if not comp_pairings:
+            st.info("No matches added to this competition yet.")
+            
         for p in comp_pairings:
-            with st.expander(f"{p['landb_player']} vs {p['opposition_player']}"):
-                h = st.selectbox("Hole", HOLE_OPTIONS, index=safe_index(HOLE_OPTIONS, p['hole']), key=f"h_{p['id']}")
-                sc = st.selectbox("Score (Relative to L&B)", SCORE_OPTIONS, index=safe_index(SCORE_OPTIONS, p['score']), key=f"sc_{p['id']}")
-                fin = st.checkbox("Match Finished", value=(p['status'] == "FINISHED"), key=f"f_{p['id']}")
+            st.markdown(generate_pairing_html(p, "manager"), unsafe_allow_html=True)
+            
+            with st.expander(f"Update: {p['landb_player']} vs {p['opposition_player']}", expanded=False):
+                uc1, uc2 = st.columns(2)
+                h = uc1.selectbox("Hole", HOLE_OPTIONS, index=safe_index(HOLE_OPTIONS, str(p['hole'])), key=f"h_{p['id']}")
+                sc = uc2.selectbox("Score (Relative to L&B)", SCORE_OPTIONS, index=safe_index(SCORE_OPTIONS, p['score']), key=f"sc_{p['id']}")
+                fin = st.checkbox("Match Finished (Check to lock final score)", value=(p['status'] == "FINISHED"), key=f"fin_{p['id']}")
+                
                 if st.button("Save Match Update", key=f"btn_{p['id']}", type="primary"):
                     new_leader = get_leader_from_score(sc)
                     supabase.table("pairings").update({
                         "hole": h, "score": sc, "status": "FINISHED" if fin else "LIVE", "leader": new_leader
                     }).eq("id", p['id']).execute()
                     st.success("Updated!"); time.sleep(1.5); st.rerun()
+            st.divider()
     else:
         st.error("Invalid Manager Link. Competition not found.")
 
@@ -157,7 +214,6 @@ elif role == "admin":
         st.markdown("<h2 style='text-align: center;'>Admin Login</h2>", unsafe_allow_html=True)
         pwd = st.text_input("Enter Admin Password", type="password")
         if st.button("Login", use_container_width=True):
-            # Check secrets, fallback to landb1909 if not set up yet
             correct_password = st.secrets.get("ADMIN_PASSWORD", "landb1909")
             if pwd == correct_password:
                 st.session_state.admin_auth = True
