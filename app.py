@@ -94,7 +94,7 @@ def generate_pairing_html(p, view_mode="public"):
 HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
 SCORE_OPTIONS = ["All Square"] + [f"{i} Up" for i in range(1, 10)] + [f"{i} Down" for i in range(1, 10)]
 VENUE_OPTIONS = ["Home", "Away"]
-CATEGORY_OPTIONS = ["Men", "Ladies", "Mixed"]
+CATEGORY_OPTIONS = ["Mens", "Ladies", "Mixed"]
 
 # --- DATA FETCHING ---
 @st.cache_data(ttl=10) # Refreshes cache every 10 seconds
