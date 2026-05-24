@@ -72,13 +72,12 @@ def calculate_overall_score(competition_name, data_source):
         return lb_score, opp_score
 
     for pairing in data_source[competition_name]["pairings"]:
-        # Only allocate points if the match is active or finished
         if pairing["status"] in ["LIVE", "FINISHED"]:
             if pairing["leader"] == "L&B":
                 lb_score += 1.0
             elif pairing["leader"] == "Opposition":
                 opp_score += 1.0
-            else: # Tied
+            else: 
                 lb_score += 0.5
                 opp_score += 0.5
     return lb_score, opp_score
@@ -92,14 +91,12 @@ def safe_index(options_list, value, default=0):
     return options_list.index(value) if value in options_list else default
 
 # --- ROUTING & NAVIGATION ---
-# Check the URL for manager access links
 query_params = st.query_params
 url_role = query_params.get("role", None)
 url_comp = query_params.get("comp", None)
 
 has_comps = len(matches_data) > 0
 
-# If the URL contains ?role=manager, lock the user into the Manager Portal
 if url_role == "manager" and url_comp in matches_data:
     st.sidebar.success(f"Manager Access Granted")
     st.sidebar.info(f"You are managing:\n**{url_comp}**")
@@ -115,7 +112,7 @@ else:
 
 # --- VIEW 1: PUBLIC SCOREBOARD (Read Only) ---
 if view == "Public Scoreboard":
-    st.markdown("<h2 style='text-align: center;'>L&B Match Center</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>L&B Match Centre</h2>", unsafe_allow_html=True)
     st.divider()
     
     if not has_comps:
@@ -128,19 +125,21 @@ if view == "Public Scoreboard":
     for comp_name, data in matches_data.items():
         lb_score, opp_score = calculate_overall_score(comp_name, matches_data)
         
-        # Display Banner
         st.markdown(f"<h4 style='text-align: center; margin-bottom: 0px;'>{data['raw_comp_name']}</h4>", unsafe_allow_html=True)
-        st.markdown(f"<p style='text-align: center; color: gray; font-size: 14px;'>{data['category']} | {data['opposition_team']}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align: center; color: gray; font-size: 14px;'>{data['category']}</p>", unsafe_allow_html=True)
         
-        col1, col2, col3 = st.columns([2, 1, 2])
-        with col1:
-            st.markdown(f"<div style='background-color: darkblue; color: white; padding: 10px; font-size: 20px; text-align: center; border-radius: 5px;'>L&B: <b>{lb_score}</b></div>", unsafe_allow_html=True)
+        col1, col2, col3, col4, col5 = st.columns([1, 2, 1, 2, 1])
         with col2:
-            st.markdown("<h3 style='text-align: center;'>:</h3>", unsafe_allow_html=True)
+            st.write("<div style='text-align: center;'><b>L&B</b></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: darkblue; color: white; padding: 15px; font-size: 24px; text-align: center; border-radius: 5px;'><b>{lb_score}</b></div>", unsafe_allow_html=True)
         with col3:
-             st.markdown(f"<div style='background-color: darkred; color: white; padding: 10px; font-size: 20px; text-align: center; border-radius: 5px;'>OPP: <b>{opp_score}</b></div>", unsafe_allow_html=True)
+            st.markdown("<h2 style='text-align: center; padding-top:20px;'>:</h2>", unsafe_allow_html=True)
+        with col4:
+            st.write(f"<div style='text-align: center;'><b>{data['opposition_team']}</b></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: darkred; color: white; padding: 15px; font-size: 24px; text-align: center; border-radius: 5px;'><b>{opp_score}</b></div>", unsafe_allow_html=True)
         
-        # Drill-down expander for pairings
+        st.write("&nbsp;") 
+        
         with st.expander(f"View Pairings (Last updated: {datetime.now().strftime('%H:%M')})"):
             if not data["pairings"]:
                 st.write("Pairings to be announced.")
@@ -222,12 +221,10 @@ elif view == "Manager Portal":
             new_hole = uc1.selectbox("Hole", HOLE_OPTIONS, index=safe_index(HOLE_OPTIONS, current_hole), key=f"hole_{pairing['id']}")
             new_score = uc2.selectbox("Score (Relative to L&B)", SCORE_OPTIONS, index=safe_index(SCORE_OPTIONS, current_score), key=f"score_{pairing['id']}")
             
-            # Replaces the status dropdown
             is_finished = st.checkbox("Match Finished (Check to lock final score)", value=(pairing['status'] == "FINISHED"), key=f"fin_{pairing['id']}")
             
             if st.button("Save Update", key=f"btn_{pairing['id']}", type="primary"):
                 new_leader = get_leader_from_score(new_score)
-                # Automatically assign LIVE or FINISHED
                 auto_status = "FINISHED" if is_finished else "LIVE" 
                 try:
                     supabase.table('pairings').update({
@@ -237,7 +234,6 @@ elif view == "Manager Portal":
                         'leader': new_leader
                     }).eq('id', pairing['id']).execute()
                     
-                    # Also set the overall comp status to LIVE if it hasn't been started
                     if data['status'] == "Not Started":
                          supabase.table('competitions').update({'status': 'LIVE'}).eq('id', data['id']).execute()
                          
@@ -343,7 +339,6 @@ elif view == "Admin Console":
                 e_opp_team = e_col3.text_input("Opposition Team", value=comp_data['opposition_team'])
                 e_start_time = e_col4.text_input("Start Time", value=comp_data.get('start_time', ''))
                 
-                # Check for overall status override
                 e_status = st.selectbox("Overall Status Override", ["Not Started", "LIVE", "FINISHED"], index=["Not Started", "LIVE", "FINISHED"].index(comp_data.get('status', 'Not Started')))
                 
                 e_date = st.date_input("Match Date", value=datetime.strptime(comp_data['date'], "%Y-%m-%d").date() if comp_data['date'] else datetime.today())
@@ -427,8 +422,6 @@ elif view == "Admin Console":
         st.subheader("Distribute Manager Links")
         st.write("Send these links to your team managers. When they click the link, the app will lock them into their specific competition with no admin controls.")
         
-        # Get the base URL (handles local testing vs Streamlit Cloud)
-        # Note: In Streamlit Cloud this usually needs to be constructed manually
         st.info("**Instructions:** Copy the text block below and add it to the very end of your main Streamlit App URL.")
         
         for comp_name in matches_data.keys():
