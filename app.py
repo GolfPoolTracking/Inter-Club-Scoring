@@ -9,218 +9,79 @@ import urllib.parse
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="expanded")
 
-# Inject L&B Corporate Font (Noto Serif) Safely
+# Inject Noto Serif font while preserving Streamlit's native icon fonts
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap');
     
-    /* Apply font to the main app container without breaking icon fonts */
-    .stApp, p, h1, h2, h3, h4, h5, h6, div {
-        font-family: 'Noto Serif', serif;
-    }
-    
-    /* Protect Streamlit internal icons */
-    .material-symbols-rounded, .st-icon {
-        font-family: 'Material Symbols Rounded', 'Material Icons' !important;
+    /* Apply font only to text elements, avoiding the icon-specific classes */
+    div, p, h1, h2, h3, h4, h5, h6, .stMarkdown, .stButton, .stRadio, .stCheckbox {
+        font-family: 'Noto Serif', serif !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# Modern, Premium Color Palette (Avoiding ClubNet Colors & Gold)
-LB_COLOR = "#0D4722"   # Deep Pine Green
-OPP_COLOR = "#4A5568"  # Sophisticated Slate
-TIE_COLOR = "#A0AEC0"  # Clean Ash Silver
+# L&B Palette
+LB_COLOR = "#0D4722"   # Pine Green
+OPP_COLOR = "#6B8EAD"  # Castle Blue
+TIE_COLOR = "#A0AEC0"  # Ash Silver
 
-# --- TIMEZONE SETUP ---
+# --- HELPERS ---
 ireland_tz = ZoneInfo("Europe/Dublin")
+supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-# --- LIST DEFINITIONS ---
-HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
-SCORE_OPTIONS = ["All Square"] + [f"{i} Up" for i in range(1, 10)] + [f"{i} Down" for i in range(1, 10)]
-VENUE_OPTIONS = ["Home", "Away"]
-CATEGORY_OPTIONS = ["Men", "Ladies", "Mixed"]
-
-# --- DATABASE CONNECTION ---
-@st.cache_resource
-def init_connection():
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
-
-supabase = init_connection()
-
-# --- FETCH LIVE DATA ---
-def fetch_matches():
-    try:
-        comp_response = supabase.table("competitions").select("*").execute()
-        competitions = comp_response.data
-
-        pairings_response = supabase.table("pairings").select("*").execute()
-        all_pairings = pairings_response.data
-
-        match_dict = {}
-        for comp in competitions:
-            category = comp.get("category", "Mixed")
-            comp_name = comp["comp_name"]
-            display_name = f"{category} {comp_name}"
-            
-            match_dict[display_name] = {
-                "id": comp["id"],
-                "raw_comp_name": comp_name,
-                "date": comp["match_date"],
-                "category": category,
-                "start_time": comp.get("start_time", ""),
-                "opposition_team": comp.get("opposition_team", "Unknown"),
-                "pairings": []
-            }
-            
-            for pairing in all_pairings:
-                if pairing["competition_id"] == comp["id"]:
-                    match_dict[display_name]["pairings"].append(pairing)
-            
-            match_dict[display_name]["pairings"] = sorted(match_dict[display_name]["pairings"], key=lambda x: x['id'])
-                    
-        return match_dict
-    except Exception as e:
-        st.error(f"Error fetching data: {e}")
-        return {}
-
-matches_data = fetch_matches()
-
-# --- HELPER FUNCTIONS ---
 def get_dynamic_comp_status(pairings):
-    """Dynamically calculates the competition status based on its pairings."""
-    if not pairings:
-        return "Not Started"
-    
+    if not pairings: return "Not Started"
     statuses = [p['status'] for p in pairings]
-    
-    if "LIVE" in statuses:
-        return "LIVE"
-    elif all(s == "FINISHED" for s in statuses):
-        return "FINISHED"
-    else:
-        return "Not Started"
+    return "LIVE" if "LIVE" in statuses else ("FINISHED" if all(s == "FINISHED" for s in statuses) else "Not Started")
 
-def calculate_overall_score(competition_name, data_source):
-    """Calculates LIVE projected points (1 for lead, 0.5 for tie) for started matches."""
-    lb_score = 0.0
-    opp_score = 0.0
-    
-    if competition_name not in data_source:
-        return lb_score, opp_score
+def calculate_overall_score(pairings):
+    lb, opp = 0.0, 0.0
+    for p in pairings:
+        if p["status"] in ["LIVE", "FINISHED"]:
+            if p["leader"] == "L&B": lb += 1.0
+            elif p["leader"] == "Opposition": opp += 1.0
+            else: lb += 0.5; opp += 0.5
+    return lb, opp
 
-    for pairing in data_source[competition_name]["pairings"]:
-        if pairing["status"] in ["LIVE", "FINISHED"]:
-            if pairing["leader"] == "L&B":
-                lb_score += 1.0
-            elif pairing["leader"] == "Opposition":
-                opp_score += 1.0
-            else: 
-                lb_score += 0.5
-                opp_score += 0.5
-    return lb_score, opp_score
-
-def get_leader_from_score(score_string):
-    if "Up" in score_string: return "L&B"
-    elif "Down" in score_string: return "Opposition"
-    return "Tied"
-
-def safe_index(options_list, value, default=0):
-    return options_list.index(value) if value in options_list else default
-
-# --- ROUTING & NAVIGATION ---
+# --- NAVIGATION ---
 query_params = st.query_params
-url_role = query_params.get("role", None)
-url_comp = query_params.get("comp", None)
-
-has_comps = len(matches_data) > 0
-
-if url_role == "manager" and url_comp in matches_data:
-    st.sidebar.success(f"Manager Access Granted")
-    st.sidebar.info(f"You are managing:\n**{url_comp}**")
-    view = "Manager Portal"
-    selected_comp = url_comp
+if query_params.get("role") == "manager":
+    view, selected_comp = "Manager Portal", query_params.get("comp")
 else:
-    st.sidebar.title("Navigation")
     view = st.sidebar.radio("Mode", ["Public Scoreboard", "Manager Portal", "Admin Console"])
-    if view == "Manager Portal" and has_comps:
-        selected_comp = st.sidebar.selectbox("Select Competition to Manage", list(matches_data.keys()))
-    else:
-        selected_comp = None
+    selected_comp = st.sidebar.selectbox("Competition", [f"{c['category']} {c['comp_name']}" for c in supabase.table("competitions").select("*").execute().data]) if view != "Public Scoreboard" else None
 
-# --- VIEW 1: PUBLIC SCOREBOARD (Read Only) ---
+# --- PUBLIC SCOREBOARD ---
 if view == "Public Scoreboard":
-    
-    # Header with Automatic Logo Fetching
-    st.markdown("""
-        <div style="text-align: center; padding-bottom: 5px;">
-            <img src="https://logo.clearbit.com/landbgolfclub.ie" alt="L&B Logo" style="max-height: 110px; margin-bottom: 10px;" onerror="this.style.display='none'"/>
-            <h2 style='font-weight: 700; margin-top: 0px;'>L&B Match Centre</h2>
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown("""<div style="text-align: center;"><img src="app/static/lb_logo.png" width="120"/><h2 style='font-weight: 700;'>L&B Match Centre</h2></div>""", unsafe_allow_html=True)
     st.divider()
     
-    if not has_comps:
-        st.info("No active competitions.")
-        st.stop()
+    comps = supabase.table("competitions").select("*").execute().data
+    pairings = supabase.table("pairings").select("*").execute().data
+    
+    for comp in comps:
+        comp_pairings = [p for p in pairings if p["competition_id"] == comp["id"]]
+        lb, opp = calculate_overall_score(comp_pairings)
+        status = get_dynamic_comp_status(comp_pairings)
         
-    if st.button("↻ Refresh All Scores", use_container_width=True):
-        st.rerun()
+        st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>{comp['category']} {comp['comp_name']}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
         
-    for comp_name, data in matches_data.items():
-        lb_score, opp_score = calculate_overall_score(comp_name, matches_data)
-        comp_status = get_dynamic_comp_status(data["pairings"])
+        c1, c2, c3 = st.columns([2, 1, 2])
+        c1.markdown(f"<div style='text-align: center;'><b>L&B</b></div><div style='background:{LB_COLOR}; color:white; padding:15px; text-align:center; border-radius:5px;'>{lb}</div>", unsafe_allow_html=True)
+        c2.markdown("<div style='text-align: center; font-size: 30px; font-weight: bold; padding-top: 25px;'>:</div>", unsafe_allow_html=True)
+        c3.markdown(f"<div style='text-align: center;'><b>{comp['opposition_team']}</b></div><div style='background:{OPP_COLOR}; color:white; padding:15px; text-align:center; border-radius:5px;'>{opp}</div>", unsafe_allow_html=True)
         
-        display_category = "Mens" if data['category'] == "Men" else data['category']
-        full_title = f"{display_category} {data['raw_comp_name']}".strip()
-        
-        st.markdown(f"<h3 style='text-align: center; margin-bottom: 5px; font-weight: 700;'>{full_title}</h3>", unsafe_allow_html=True)
-        
-        # Dynamic Status Badge
-        status_colors = {"Not Started": "gray", "LIVE": "#8bc34a", "FINISHED": "darkred"}
-        badge_color = status_colors.get(comp_status, "gray")
-        st.markdown(f"<div style='text-align: center; margin-bottom: 20px;'><span style='background-color: {badge_color}; color: white; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; letter-spacing: 1px;'>{comp_status.upper()}</span></div>", unsafe_allow_html=True)
-        
-        col1, col2, col3, col4, col5 = st.columns([1, 4, 1, 4, 1])
-        with col2:
-            st.write("<div style='text-align: center; font-weight: bold;'>L&B</div>", unsafe_allow_html=True)
-            st.markdown(f"<div style='background-color: {LB_COLOR}; color: white; padding: 15px; font-size: 24px; text-align: center; border-radius: 5px; font-weight: bold;'>{lb_score}</div>", unsafe_allow_html=True)
-        with col3:
-            st.markdown("<div style='text-align: center; font-size: 40px; font-weight: bold; padding-top: 22px;'>:</div>", unsafe_allow_html=True)
-        with col4:
-            st.write(f"<div style='text-align: center; font-weight: bold;'>{data['opposition_team']}</div>", unsafe_allow_html=True)
-            st.markdown(f"<div style='background-color: {OPP_COLOR}; color: white; padding: 15px; font-size: 24px; text-align: center; border-radius: 5px; font-weight: bold;'>{opp_score}</div>", unsafe_allow_html=True)
-        
-        st.write("&nbsp;") 
-        
-        current_time_str = datetime.now(ireland_tz).strftime('%H:%M')
-        with st.expander(f"View Pairings (Last updated: {current_time_str})"):
-            if not data["pairings"]:
-                st.write("Pairings to be announced.")
-            else:
-                for pairing in data["pairings"]:
-                    pc1, pc2, pc3 = st.columns([1, 1, 1])
-                    with pc1:
-                        st.write(f"**{pairing.get('landb_player', 'TBD')}**")
-                        if pairing['leader'] == 'L&B':
-                            st.markdown(f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px;'>{pairing['score']}</div>", unsafe_allow_html=True)
-                        elif pairing['leader'] == 'Tied':
-                            st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px;'>ALL SQUARE</div>", unsafe_allow_html=True)
-                    with pc2:
-                        hole_val = str(pairing.get('hole', '1'))
-                        hole_display = f"Hole {hole_val}" if hole_val.isdigit() else hole_val 
-                        st.markdown(f"<div style='background-color: black; color: white; text-align: center; padding: 2px; margin-top: 5px; font-size: 14px; border-radius: 3px;'>{hole_display}</div>", unsafe_allow_html=True)
-                        p_status_color = "gray" if pairing['status'] == "Not Started" else ("darkred" if pairing['status'] == "FINISHED" else "#8bc34a")
-                        st.markdown(f"<div style='background-color: {p_status_color}; color: white; text-align: center; padding: 2px; font-size: 12px; font-weight: bold; border-radius: 3px;'>{pairing['status']}</div>", unsafe_allow_html=True)
-                    with pc3:
-                         st.write(f"**{pairing.get('opposition_player', 'TBD')}**")
-                         if pairing['leader'] == 'Opposition':
-                            display_score = pairing['score'].replace("Down", "Up") 
-                            st.markdown(f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px;'>{display_score}</div>", unsafe_allow_html=True)
-                         elif pairing['leader'] == 'Tied':
-                            st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px;'>ALL SQUARE</div>", unsafe_allow_html=True)
-                    st.write("---")
+        with st.expander(f"View Pairings (Last updated: {datetime.now(ireland_tz).strftime('%H:%M')})"):
+            for p in comp_pairings:
+                # Scores Above Names
+                s1, s2 = st.columns(2)
+                s1.markdown(f"<div style='background:{LB_COLOR if p['leader']=='L&B' else TIE_COLOR}; color:white; text-align:center; border-radius:3px; font-weight:bold;'>{p['score']}</div>", unsafe_allow_html=True)
+                s2.markdown(f"<div style='background:{OPP_COLOR if p['leader']=='Opposition' else TIE_COLOR}; color:white; text-align:center; border-radius:3px; font-weight:bold;'>{p['score'].replace('Down', 'Up')}</div>", unsafe_allow_html=True)
+                n1, n2 = st.columns(2)
+                n1.write(f"**{p.get('landb_player')}**"); n2.write(f"**{p.get('opposition_player')}**")
+                st.write("---")
         st.divider()
 
 # --- VIEW 2: MANAGER PORTAL (Live Scoring Updates) ---
