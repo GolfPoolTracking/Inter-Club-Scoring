@@ -146,8 +146,21 @@ query_params = st.query_params
 role = query_params.get("role", "public")
 
 # --- VIEW 1: PUBLIC SCOREBOARD ---
+# --- VIEW 1: PUBLIC SCOREBOARD ---
 if role == "public":
-    st.markdown("""<div style="text-align: center;"><img src="app/static/lb_logo.png" width="120" onerror="this.style.display='none'"/><h2 style='font-weight: 700; margin-top: 5px;'>L&B Match Centre</h2></div>""", unsafe_allow_html=True)
+    # Safely load the logo
+    logo_base64 = get_base64_image("static/lb_logo.png")
+    if logo_base64:
+        logo_html = f'<img src="data:image/png;base64,{logo_base64}" width="120" style="margin-bottom: 5px;"/>'
+    else:
+        logo_html = "" # Failsafe if the image isn't found
+
+    st.markdown(f"""
+        <div style="text-align: center;">
+            {logo_html}
+            <h2 style='font-weight: 700; margin-top: 0px;'>L&B Match Centre</h2>
+        </div>
+    """, unsafe_allow_html=True)
     st.divider()
     
     if not comps:
