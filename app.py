@@ -7,40 +7,25 @@ from supabase import create_client
 import urllib.parse
 
 # --- CONFIGURATION & STYLING ---
-st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="expanded")
+st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# Inject L&B Corporate Font (Noto Serif) Safely
+# Inject Noto Serif font safely
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap');
-    
-    /* Apply font to the main app container without breaking icon fonts */
-    .stApp, p, h1, h2, h3, h4, h5, h6, div {
-        font-family: 'Noto Serif', serif;
+    div, p, h1, h2, h3, h4, h5, h6, .stMarkdown, .stButton, .stRadio, .stCheckbox { 
+        font-family: 'Noto Serif', serif !important; 
     }
-    
-    /* Protect Streamlit internal icons */
-    .material-symbols-rounded, .st-icon {
-        font-family: 'Material Symbols Rounded', 'Material Icons' !important;
-    }
+    /* Hide the default Streamlit top menu and footer for a cleaner look */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# Modern, Premium Color Palette (Avoiding ClubNet Colors & Gold)
-LB_COLOR = "#0D4722"   # Deep Pine Green
-OPP_COLOR = "#4A5568"  # Sophisticated Slate
-TIE_COLOR = "#A0AEC0"  # Clean Ash Silver
-
-# --- TIMEZONE SETUP ---
+# L&B Palette
+LB_COLOR, OPP_COLOR, TIE_COLOR = "#0D4722", "#4A5568", "#A0AEC0"
 ireland_tz = ZoneInfo("Europe/Dublin")
 
-# --- LIST DEFINITIONS ---
-HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
-SCORE_OPTIONS = ["All Square"] + [f"{i} Up" for i in range(1, 10)] + [f"{i} Down" for i in range(1, 10)]
-VENUE_OPTIONS = ["Home", "Away"]
-CATEGORY_OPTIONS = ["Men", "Ladies", "Mixed"]
-
-# --- DATABASE CONNECTION ---
 @st.cache_resource
 def init_connection():
     url = st.secrets["SUPABASE_URL"]
@@ -49,445 +34,254 @@ def init_connection():
 
 supabase = init_connection()
 
-# --- FETCH LIVE DATA ---
-def fetch_matches():
-    try:
-        comp_response = supabase.table("competitions").select("*").execute()
-        competitions = comp_response.data
-
-        pairings_response = supabase.table("pairings").select("*").execute()
-        all_pairings = pairings_response.data
-
-        match_dict = {}
-        for comp in competitions:
-            category = comp.get("category", "Mixed")
-            comp_name = comp["comp_name"]
-            display_name = f"{category} {comp_name}"
-            
-            match_dict[display_name] = {
-                "id": comp["id"],
-                "raw_comp_name": comp_name,
-                "date": comp["match_date"],
-                "category": category,
-                "start_time": comp.get("start_time", ""),
-                "opposition_team": comp.get("opposition_team", "Unknown"),
-                "pairings": []
-            }
-            
-            for pairing in all_pairings:
-                if pairing["competition_id"] == comp["id"]:
-                    match_dict[display_name]["pairings"].append(pairing)
-            
-            match_dict[display_name]["pairings"] = sorted(match_dict[display_name]["pairings"], key=lambda x: x['id'])
-                    
-        return match_dict
-    except Exception as e:
-        st.error(f"Error fetching data: {e}")
-        return {}
-
-matches_data = fetch_matches()
-
-# --- HELPER FUNCTIONS ---
-def get_dynamic_comp_status(pairings):
-    """Dynamically calculates the competition status based on its pairings."""
-    if not pairings:
-        return "Not Started"
-    
-    statuses = [p['status'] for p in pairings]
-    
-    if "LIVE" in statuses:
-        return "LIVE"
-    elif all(s == "FINISHED" for s in statuses):
-        return "FINISHED"
-    else:
-        return "Not Started"
-
-def calculate_overall_score(competition_name, data_source):
-    """Calculates LIVE projected points (1 for lead, 0.5 for tie) for started matches."""
-    lb_score = 0.0
-    opp_score = 0.0
-    
-    if competition_name not in data_source:
-        return lb_score, opp_score
-
-    for pairing in data_source[competition_name]["pairings"]:
-        if pairing["status"] in ["LIVE", "FINISHED"]:
-            if pairing["leader"] == "L&B":
-                lb_score += 1.0
-            elif pairing["leader"] == "Opposition":
-                opp_score += 1.0
-            else: 
-                lb_score += 0.5
-                opp_score += 0.5
-    return lb_score, opp_score
-
+# --- HELPERS ---
 def get_leader_from_score(score_string):
     if "Up" in score_string: return "L&B"
     elif "Down" in score_string: return "Opposition"
     return "Tied"
 
-def safe_index(options_list, value, default=0):
-    return options_list.index(value) if value in options_list else default
+def get_comp_status(pairings):
+    if not pairings: return "Not Started"
+    statuses = [p['status'] for p in pairings]
+    return "LIVE" if "LIVE" in statuses else ("FINISHED" if all(s == "FINISHED" for s in statuses) else "Not Started")
 
-# --- ROUTING & NAVIGATION ---
+def calculate_overall_score(pairings):
+    lb, opp = 0.0, 0.0
+    for p in pairings:
+        if p["status"] in ["LIVE", "FINISHED"]:
+            if p["leader"] == "L&B": lb += 1.0
+            elif p["leader"] == "Opposition": opp += 1.0
+            else: lb += 0.5; opp += 0.5
+    return lb, opp
+
+def safe_index(lst, val): return lst.index(val) if val in lst else 0
+
+# --- LIST DEFINITIONS ---
+HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
+SCORE_OPTIONS = ["All Square"] + [f"{i} Up" for i in range(1, 10)] + [f"{i} Down" for i in range(1, 10)]
+VENUE_OPTIONS = ["Home", "Away"]
+CATEGORY_OPTIONS = ["Men", "Ladies", "Mixed"]
+
+# --- DATA FETCHING ---
+@st.cache_data(ttl=10) # Refreshes cache every 10 seconds
+def fetch_all():
+    try:
+        comps = supabase.table("competitions").select("*").execute().data
+        pairings = supabase.table("pairings").select("*").execute().data
+        return comps, pairings
+    except:
+        return [], []
+
+comps, pairings = fetch_all()
+
+# --- SECURE URL ROUTING ---
+# The app now routes entirely based on the URL parameters. No sidebar menu!
 query_params = st.query_params
-url_role = query_params.get("role", None)
-url_comp = query_params.get("comp", None)
+role = query_params.get("role", "public")
 
-has_comps = len(matches_data) > 0
-
-if url_role == "manager" and url_comp in matches_data:
-    st.sidebar.success(f"Manager Access Granted")
-    st.sidebar.info(f"You are managing:\n**{url_comp}**")
-    view = "Manager Portal"
-    selected_comp = url_comp
-else:
-    st.sidebar.title("Navigation")
-    view = st.sidebar.radio("Mode", ["Public Scoreboard", "Manager Portal", "Admin Console"])
-    if view == "Manager Portal" and has_comps:
-        selected_comp = st.sidebar.selectbox("Select Competition to Manage", list(matches_data.keys()))
-    else:
-        selected_comp = None
-
-# --- VIEW 1: PUBLIC SCOREBOARD (Read Only) ---
-if view == "Public Scoreboard":
-    
-    # Header with Automatic Logo Fetching
-    st.markdown("""
-        <div style="text-align: center; padding-bottom: 5px;">
-            <img src="https://logo.clearbit.com/landbgolfclub.ie" alt="L&B Logo" style="max-height: 110px; margin-bottom: 10px;" onerror="this.style.display='none'"/>
-            <h2 style='font-weight: 700; margin-top: 0px;'>L&B Match Centre</h2>
-        </div>
-    """, unsafe_allow_html=True)
+# --- VIEW 1: PUBLIC SCOREBOARD ---
+if role == "public":
+    st.markdown("""<div style="text-align: center;"><img src="app/static/lb_logo.png" width="120" onerror="this.style.display='none'"/><h2 style='font-weight: 700; margin-top: 5px;'>L&B Match Centre</h2></div>""", unsafe_allow_html=True)
     st.divider()
     
-    if not has_comps:
+    if not comps:
         st.info("No active competitions.")
         st.stop()
         
-    if st.button("↻ Refresh All Scores", use_container_width=True):
-        st.rerun()
-        
-    for comp_name, data in matches_data.items():
-        lb_score, opp_score = calculate_overall_score(comp_name, matches_data)
-        comp_status = get_dynamic_comp_status(data["pairings"])
-        
-        display_category = "Mens" if data['category'] == "Men" else data['category']
-        full_title = f"{display_category} {data['raw_comp_name']}".strip()
-        
-        st.markdown(f"<h3 style='text-align: center; margin-bottom: 5px; font-weight: 700;'>{full_title}</h3>", unsafe_allow_html=True)
-        
-        # Dynamic Status Badge
-        status_colors = {"Not Started": "gray", "LIVE": "#8bc34a", "FINISHED": "darkred"}
-        badge_color = status_colors.get(comp_status, "gray")
-        st.markdown(f"<div style='text-align: center; margin-bottom: 20px;'><span style='background-color: {badge_color}; color: white; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; letter-spacing: 1px;'>{comp_status.upper()}</span></div>", unsafe_allow_html=True)
-        
-        col1, col2, col3, col4, col5 = st.columns([1, 4, 1, 4, 1])
-        with col2:
-            st.write("<div style='text-align: center; font-weight: bold;'>L&B</div>", unsafe_allow_html=True)
-            st.markdown(f"<div style='background-color: {LB_COLOR}; color: white; padding: 15px; font-size: 24px; text-align: center; border-radius: 5px; font-weight: bold;'>{lb_score}</div>", unsafe_allow_html=True)
-        with col3:
-            st.markdown("<div style='text-align: center; font-size: 40px; font-weight: bold; padding-top: 22px;'>:</div>", unsafe_allow_html=True)
-        with col4:
-            st.write(f"<div style='text-align: center; font-weight: bold;'>{data['opposition_team']}</div>", unsafe_allow_html=True)
-            st.markdown(f"<div style='background-color: {OPP_COLOR}; color: white; padding: 15px; font-size: 24px; text-align: center; border-radius: 5px; font-weight: bold;'>{opp_score}</div>", unsafe_allow_html=True)
-        
-        st.write("&nbsp;") 
-        
-        current_time_str = datetime.now(ireland_tz).strftime('%H:%M')
-        with st.expander(f"View Pairings (Last updated: {current_time_str})"):
-            if not data["pairings"]:
-                st.write("Pairings to be announced.")
-            else:
-                for pairing in data["pairings"]:
-                    pc1, pc2, pc3 = st.columns([1, 1, 1])
-                    with pc1:
-                        if pairing['leader'] == 'L&B':
-                            st.markdown(f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>{pairing['score']}</div>", unsafe_allow_html=True)
-                        elif pairing['leader'] == 'Tied':
-                            st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
-                        else:
-                            st.markdown(f"<div style='padding: 3px; margin-bottom: 5px;'>&nbsp;</div>", unsafe_allow_html=True)
-                        st.write(f"**{pairing.get('landb_player', 'TBD')}**")
-                    with pc2:
-                        hole_val = str(pairing.get('hole', '1'))
-                        hole_display = f"Hole {hole_val}" if hole_val.isdigit() else hole_val 
-                        st.markdown(f"<div style='background-color: black; color: white; text-align: center; padding: 2px; margin-top: 5px; font-size: 14px; border-radius: 3px;'>{hole_display}</div>", unsafe_allow_html=True)
-                        p_status_color = "gray" if pairing['status'] == "Not Started" else ("darkred" if pairing['status'] == "FINISHED" else "#8bc34a")
-                        st.markdown(f"<div style='background-color: {p_status_color}; color: white; text-align: center; padding: 2px; font-size: 12px; font-weight: bold; border-radius: 3px;'>{pairing['status']}</div>", unsafe_allow_html=True)
-                    with pc3:
-                         if pairing['leader'] == 'Opposition':
-                            display_score = pairing['score'].replace("Down", "Up") 
-                            st.markdown(f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>{display_score}</div>", unsafe_allow_html=True)
-                         elif pairing['leader'] == 'Tied':
-                            st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
-                         else:
-                            st.markdown(f"<div style='padding: 3px; margin-bottom: 5px;'>&nbsp;</div>", unsafe_allow_html=True)
-                         st.write(f"**{pairing.get('opposition_player', 'TBD')}**")
-                    st.write("---")
-        st.divider()
-
-# --- VIEW 2: MANAGER PORTAL (Live Scoring Updates) ---
-elif view == "Manager Portal":
-    if not has_comps:
-        st.warning("No competitions available.")
-        st.stop()
-        
-    data = matches_data[selected_comp]
-    lb_score, opp_score = calculate_overall_score(selected_comp, matches_data)
-    comp_status = get_dynamic_comp_status(data["pairings"])
-
-    st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>Manage: {selected_comp}</h3>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align: center;'>Live Score: L&B <b>{lb_score}</b> - <b>{opp_score}</b> {data['opposition_team']}</p>", unsafe_allow_html=True)
+    if st.button("↻ Refresh Scores", use_container_width=True): st.rerun()
     
-    status_colors = {"Not Started": "gray", "LIVE": "#8bc34a", "FINISHED": "darkred"}
-    badge_color = status_colors.get(comp_status, "gray")
-    st.markdown(f"<div style='text-align: center; margin-bottom: 20px;'><span style='background-color: {badge_color}; color: white; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold;'>{comp_status.upper()}</span></div>", unsafe_allow_html=True)
-    st.divider()
-    
-    if not data["pairings"]:
-        st.info("No matches added to this competition yet.")
+    for comp in comps:
+        comp_pairings = [p for p in pairings if p["competition_id"] == comp["id"]]
+        # Sort pairings by ID to ensure Match 1, Match 2 order
+        comp_pairings = sorted(comp_pairings, key=lambda x: x['id'])
         
-    for i, pairing in enumerate(data["pairings"]):
-        pc1, pc2, pc3 = st.columns([1, 1, 1])
+        lb, opp = calculate_overall_score(comp_pairings)
+        status = get_comp_status(comp_pairings)
         
-        with pc1:
-            if pairing['leader'] == 'L&B':
-                st.markdown(f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>{pairing['score']}</div>", unsafe_allow_html=True)
-            elif pairing['leader'] == 'Tied':
-                st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"<div style='padding: 5px; margin-bottom: 5px;'>&nbsp;</div>", unsafe_allow_html=True)
-            st.write(f"**{pairing.get('landb_player', 'TBD')}**")
-            st.caption(f"📍 {pairing.get('venue', 'Unknown')}")
+        st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>{comp['category']} {comp['comp_name']}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
         
-        with pc2:
-            st.write("&nbsp;")
-            hole_val = str(pairing.get('hole', '1'))
-            hole_display = f"Hole {hole_val}" if hole_val.isdigit() else hole_val 
-            st.markdown(f"<div style='background-color: black; color: white; text-align: center; padding: 2px; font-size: 14px; border-radius: 3px;'>{hole_display}</div>", unsafe_allow_html=True)
-            p_status_color = "gray" if pairing['status'] == "Not Started" else ("darkred" if pairing['status'] == "FINISHED" else "#8bc34a")
-            st.markdown(f"<div style='background-color: {p_status_color}; color: white; text-align: center; padding: 2px; font-size: 12px; font-weight: bold; border-radius: 3px;'>{pairing['status']}</div>", unsafe_allow_html=True)
-            
-        with pc3:
-             if pairing['leader'] == 'Opposition':
-                display_score = pairing['score'].replace("Down", "Up") 
-                st.markdown(f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>{display_score}</div>", unsafe_allow_html=True)
-             elif pairing['leader'] == 'Tied':
-                st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
-             else:
-                st.markdown(f"<div style='padding: 5px; margin-bottom: 5px;'>&nbsp;</div>", unsafe_allow_html=True)
-             st.write(f"**{pairing.get('opposition_player', 'TBD')}**")
-             st.caption("&nbsp;") 
-
-        with st.expander(f"Update: {pairing.get('landb_player')} vs {pairing.get('opposition_player')}", expanded=False):
-            uc1, uc2 = st.columns(2)
-            
-            current_hole = str(pairing.get('hole', '1'))
-            current_score = str(pairing.get('score', 'All Square'))
-            
-            new_hole = uc1.selectbox("Hole", HOLE_OPTIONS, index=safe_index(HOLE_OPTIONS, current_hole), key=f"hole_{pairing['id']}")
-            new_score = uc2.selectbox("Score (Relative to L&B)", SCORE_OPTIONS, index=safe_index(SCORE_OPTIONS, current_score), key=f"score_{pairing['id']}")
-            
-            is_finished = st.checkbox("Match Finished (Check to lock final score)", value=(pairing['status'] == "FINISHED"), key=f"fin_{pairing['id']}")
-            
-            if st.button("Save Update", key=f"btn_{pairing['id']}", type="primary"):
-                new_leader = get_leader_from_score(new_score)
-                auto_status = "FINISHED" if is_finished else "LIVE" 
-                try:
-                    supabase.table('pairings').update({
-                        'hole': new_hole,
-                        'score': new_score,
-                        'status': auto_status,
-                        'leader': new_leader
-                    }).eq('id', pairing['id']).execute()
-                    
-                    st.success("Match updated!")
-                    time.sleep(1.5)
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Database Error: {e}")
-        st.divider()
-
-# --- VIEW 3: ADMIN CONSOLE (Create & Manage) ---
-elif view == "Admin Console":
-    st.header("Admin Console")
-    
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Create Comp", "Add Match", "Edit Comp", "Edit Match", "Manager Links"])
-    
-    # --- TAB 1: CREATE COMPETITION ---
-    with tab1:
-        st.subheader("Create New Competition")
-        with st.form("create_comp_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            new_category = col1.selectbox("Category", CATEGORY_OPTIONS)
-            new_comp_name = col2.text_input("Competition Name (e.g., Junior Cup)")
-            
-            col3, col4 = st.columns(2)
-            new_opp_team = col3.text_input("Opposition Team")
-            new_start_time = col4.text_input("Start Time (Optional, e.g., 3:00 PM)")
-            
-            new_date = st.date_input("Match Date")
-            
-            if st.form_submit_button("Create Competition"):
-                if new_comp_name and new_opp_team:
-                    try:
-                        supabase.table('competitions').insert({
-                            "comp_name": new_comp_name,
-                            "category": new_category,
-                            "opposition_team": new_opp_team,
-                            "match_date": str(new_date),
-                            "start_time": new_start_time,
-                        }).execute()
-                        st.success(f"Created {new_category} {new_comp_name}!")
-                        time.sleep(1.5)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Database Error: {e}")
-                else:
-                    st.error("Please fill out the Competition Name and Opposition Team.")
-                    
-    # --- TAB 2: ADD MATCH ---
-    with tab2:
-        st.subheader("Add Match to Competition")
-        if not has_comps:
-            st.info("Create a competition first.")
-        else:
-            with st.form("create_pairing_form", clear_on_submit=True):
-                comp_options = {name: data['id'] for name, data in matches_data.items()}
-                target_comp = st.selectbox("Select Competition", list(comp_options.keys()))
-                default_opp_name = matches_data[target_comp]["opposition_team"] if target_comp else ""
+        c1, c2, c3, c4, c5 = st.columns([1, 4, 1, 4, 1])
+        c2.markdown(f"<div style='text-align:center; font-weight:bold;'>L&B</div><div style='background:{LB_COLOR}; color:white; padding:10px; text-align:center; border-radius:5px; font-weight:bold; font-size:20px;'>{lb}</div>", unsafe_allow_html=True)
+        c3.markdown("<div style='text-align:center; font-size:30px; font-weight:bold; padding-top:20px;'>:</div>", unsafe_allow_html=True)
+        c4.markdown(f"<div style='text-align:center; font-weight:bold;'>{comp['opposition_team']}</div><div style='background:{OPP_COLOR}; color:white; padding:10px; text-align:center; border-radius:5px; font-weight:bold; font-size:20px;'>{opp}</div>", unsafe_allow_html=True)
+        
+        with st.expander(f"View Pairings (Last updated: {datetime.now(ireland_tz).strftime('%H:%M')})"):
+            for p in comp_pairings:
+                s1, s2 = st.columns(2)
+                lb_disp = p['score'] if p['leader'] == 'L&B' else (p['score'] if p['leader'] == 'Tied' else p['score'].replace('Up', 'Down'))
+                opp_disp = p['score'] if p['leader'] == 'Opposition' else (p['score'] if p['leader'] == 'Tied' else p['score'].replace('Down', 'Up'))
                 
+                s1.markdown(f"<div style='background:{LB_COLOR if p['leader']=='L&B' else TIE_COLOR}; color:white; text-align:center; border-radius:3px; font-weight:bold; padding:3px; margin-bottom:5px;'>{lb_disp}</div>", unsafe_allow_html=True)
+                s2.markdown(f"<div style='background:{OPP_COLOR if p['leader']=='Opposition' else TIE_COLOR}; color:white; text-align:center; border-radius:3px; font-weight:bold; padding:3px; margin-bottom:5px;'>{opp_disp}</div>", unsafe_allow_html=True)
+                n1, n2 = st.columns(2)
+                n1.write(f"**{p.get('landb_player')}**")
+                n2.write(f"**{p.get('opposition_player')}**")
+                st.write("---")
+        st.divider()
+
+# --- VIEW 2: MANAGER PORTAL ---
+elif role == "manager":
+    selected_comp_name = urllib.parse.unquote(query_params.get("comp", ""))
+    comp = next((c for c in comps if f"{c['category']} {c['comp_name']}" == selected_comp_name), None)
+    
+    if comp:
+        st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>Manage: {selected_comp_name}</h3>", unsafe_allow_html=True)
+        comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], key=lambda x: x['id'])
+        
+        lb, opp = calculate_overall_score(comp_pairings)
+        st.markdown(f"<p style='text-align: center;'>Live Score: L&B <b>{lb}</b> - <b>{opp}</b> {comp['opposition_team']}</p>", unsafe_allow_html=True)
+        st.divider()
+        
+        for p in comp_pairings:
+            with st.expander(f"{p['landb_player']} vs {p['opposition_player']}"):
+                h = st.selectbox("Hole", HOLE_OPTIONS, index=safe_index(HOLE_OPTIONS, p['hole']), key=f"h_{p['id']}")
+                sc = st.selectbox("Score (Relative to L&B)", SCORE_OPTIONS, index=safe_index(SCORE_OPTIONS, p['score']), key=f"sc_{p['id']}")
+                fin = st.checkbox("Match Finished", value=(p['status'] == "FINISHED"), key=f"f_{p['id']}")
+                if st.button("Save Match Update", key=f"btn_{p['id']}", type="primary"):
+                    new_leader = get_leader_from_score(sc)
+                    supabase.table("pairings").update({
+                        "hole": h, "score": sc, "status": "FINISHED" if fin else "LIVE", "leader": new_leader
+                    }).eq("id", p['id']).execute()
+                    st.success("Updated!"); time.sleep(1.5); st.rerun()
+    else:
+        st.error("Invalid Manager Link. Competition not found.")
+
+# --- VIEW 3: ADMIN CONSOLE ---
+elif role == "admin":
+    # Simple Session State Password Logic
+    if "admin_auth" not in st.session_state:
+        st.session_state.admin_auth = False
+
+    if not st.session_state.admin_auth:
+        st.markdown("<h2 style='text-align: center;'>Admin Login</h2>", unsafe_allow_html=True)
+        pwd = st.text_input("Enter Admin Password", type="password")
+        if st.button("Login", use_container_width=True):
+            # Check secrets, fallback to landb1909 if not set up yet
+            correct_password = st.secrets.get("ADMIN_PASSWORD", "landb1909")
+            if pwd == correct_password:
+                st.session_state.admin_auth = True
+                st.rerun()
+            else:
+                st.error("Incorrect password")
+    else:
+        st.header("Admin Console")
+        if st.button("Logout of Admin"):
+            st.session_state.admin_auth = False
+            st.rerun()
+            
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Create Comp", "Add Match", "Edit Comp", "Edit Match", "Access Links"])
+        
+        # TAB 1: CREATE COMPETITION
+        with tab1:
+            st.subheader("Create New Competition")
+            with st.form("create_comp_form", clear_on_submit=True):
                 col1, col2 = st.columns(2)
-                lb_player_input = col1.text_input("L&B Player Name")
-                opp_player_input = col2.text_input("Opposition Player Name", value=default_opp_name)
+                new_category = col1.selectbox("Category", CATEGORY_OPTIONS)
+                new_comp_name = col2.text_input("Competition Name (e.g., Junior Cup)")
+                col3, col4 = st.columns(2)
+                new_opp_team = col3.text_input("Opposition Team")
+                new_start_time = col4.text_input("Start Time (Optional)")
+                new_date = st.date_input("Match Date")
                 
-                match_venue = st.selectbox("Venue", VENUE_OPTIONS)
-                
-                if st.form_submit_button("Add Match Pairing"):
-                    if lb_player_input and opp_player_input:
-                        try:
-                            supabase.table('pairings').insert({
-                                "competition_id": comp_options[target_comp],
-                                "landb_player": lb_player_input,
-                                "opposition_player": opp_player_input,
-                                "venue": match_venue,
-                                "hole": "1",
-                                "score": "All Square",
-                                "status": "Not Started",
-                                "leader": "Tied"
-                            }).execute()
-                            st.success("Match added!")
-                            time.sleep(1.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Database Error: {e}")
+                if st.form_submit_button("Create Competition"):
+                    if new_comp_name and new_opp_team:
+                        supabase.table('competitions').insert({
+                            "comp_name": new_comp_name, "category": new_category,
+                            "opposition_team": new_opp_team, "match_date": str(new_date),
+                            "start_time": new_start_time
+                        }).execute()
+                        st.success(f"Created {new_category} {new_comp_name}!"); time.sleep(1.5); st.rerun()
                     else:
-                        st.error("Please enter both player names.")
-
-    # --- TAB 3: EDIT COMPETITION ---
-    with tab3:
-        st.subheader("Edit/Delete Competition")
-        if not has_comps:
-            st.info("No competitions available.")
-        else:
-            edit_comp_name = st.selectbox("Select Competition to Edit", list(matches_data.keys()), key="edit_comp_select")
-            comp_data = matches_data[edit_comp_name]
-            
-            with st.form("edit_comp_form"):
-                e_col1, e_col2 = st.columns(2)
-                e_category = e_col1.selectbox("Category", CATEGORY_OPTIONS, index=safe_index(CATEGORY_OPTIONS, comp_data.get('category', 'Men')))
-                e_comp_name_input = e_col2.text_input("Competition Name", value=comp_data['raw_comp_name'])
-                
-                e_col3, e_col4 = st.columns(2)
-                e_opp_team = e_col3.text_input("Opposition Team", value=comp_data['opposition_team'])
-                e_start_time = e_col4.text_input("Start Time", value=comp_data.get('start_time', ''))
-                
-                e_date = st.date_input("Match Date", value=datetime.strptime(comp_data['date'], "%Y-%m-%d").date() if comp_data['date'] else datetime.now(ireland_tz).date())
-                
-                if st.form_submit_button("Update Competition"):
-                    try:
-                        supabase.table('competitions').update({
-                            "comp_name": e_comp_name_input,
-                            "category": e_category,
-                            "opposition_team": e_opp_team,
-                            "start_time": e_start_time,
-                            "match_date": str(e_date)
-                        }).eq('id', comp_data['id']).execute()
-                        st.success("Competition Updated!")
-                        time.sleep(1.5)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Database Error: {e}")
-
-            st.divider()
-            if st.checkbox(f"I want to permanently delete {edit_comp_name}", key="del_comp_check"):
-                if st.button("🚨 Delete Competition 🚨", type="primary"):
-                    try:
-                        supabase.table('competitions').delete().eq('id', comp_data['id']).execute()
-                        st.success("Competition deleted.")
-                        time.sleep(1.5)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error: {e}. You may need to delete all matches in this competition first.")
-
-    # --- TAB 4: EDIT MATCH ---
-    with tab4:
-        st.subheader("Edit/Delete Match")
-        if not has_comps:
-            st.info("No competitions available.")
-        else:
-            target_comp_for_match = st.selectbox("Select Competition", list(matches_data.keys()), key="edit_match_comp_select")
-            pairings_list = matches_data[target_comp_for_match]["pairings"]
-            
-            if not pairings_list:
-                st.info("No matches in this competition.")
-            else:
-                pairing_options = {f"{p.get('landb_player')} vs {p.get('opposition_player')}": p for p in pairings_list}
-                selected_pairing_str = st.selectbox("Select Match to Edit", list(pairing_options.keys()))
-                p_data = pairing_options[selected_pairing_str]
-                
-                with st.form("edit_match_form"):
+                        st.error("Please fill out Name and Opposition.")
+                        
+        # TAB 2: ADD MATCH
+        with tab2:
+            st.subheader("Add Match to Competition")
+            if comps:
+                with st.form("create_pairing_form", clear_on_submit=True):
+                    comp_names = {f"{c['category']} {c['comp_name']}": c['id'] for c in comps}
+                    target_comp = st.selectbox("Select Competition", list(comp_names.keys()))
                     col1, col2 = st.columns(2)
-                    e_lb_player = col1.text_input("L&B Player", value=p_data.get('landb_player', ''))
-                    e_opp_player = col2.text_input("Opposition Player", value=p_data.get('opposition_player', ''))
+                    lb_player_input = col1.text_input("L&B Player Name")
+                    opp_player_input = col2.text_input("Opposition Player Name")
+                    match_venue = st.selectbox("Venue", VENUE_OPTIONS)
                     
-                    e_venue = st.selectbox("Venue", VENUE_OPTIONS, index=safe_index(VENUE_OPTIONS, p_data.get('venue', 'Home')))
-                    
-                    if st.form_submit_button("Update Match Details"):
-                        try:
-                            supabase.table('pairings').update({
-                                "landb_player": e_lb_player,
-                                "opposition_player": e_opp_player,
-                                "venue": e_venue
-                            }).eq('id', p_data['id']).execute()
-                            st.success("Match Updated!")
-                            time.sleep(1.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Database Error: {e}")
+                    if st.form_submit_button("Add Match Pairing"):
+                        if lb_player_input and opp_player_input:
+                            supabase.table('pairings').insert({
+                                "competition_id": comp_names[target_comp],
+                                "landb_player": lb_player_input, "opposition_player": opp_player_input,
+                                "venue": match_venue, "hole": "1", "score": "All Square",
+                                "status": "Not Started", "leader": "Tied"
+                            }).execute()
+                            st.success("Match added!"); time.sleep(1.5); st.rerun()
+                        else:
+                            st.error("Please enter both player names.")
                             
-                st.divider()
-                if st.checkbox(f"I want to permanently delete {selected_pairing_str}", key="del_match_check"):
+        # TAB 3: EDIT COMP
+        with tab3:
+            st.subheader("Edit/Delete Competition")
+            if comps:
+                comp_names_dict = {f"{c['category']} {c['comp_name']}": c for c in comps}
+                edit_comp_name = st.selectbox("Select Competition", list(comp_names_dict.keys()))
+                c_data = comp_names_dict[edit_comp_name]
+                
+                with st.form("edit_comp_form"):
+                    e_c1, e_c2 = st.columns(2)
+                    e_cat = e_c1.selectbox("Category", CATEGORY_OPTIONS, index=safe_index(CATEGORY_OPTIONS, c_data['category']))
+                    e_name = e_c2.text_input("Competition Name", value=c_data['comp_name'])
+                    e_c3, e_c4 = st.columns(2)
+                    e_opp = e_c3.text_input("Opposition Team", value=c_data['opposition_team'])
+                    e_time = e_c4.text_input("Start Time", value=c_data.get('start_time', ''))
+                    
+                    if st.form_submit_button("Update Competition"):
+                        supabase.table('competitions').update({
+                            "comp_name": e_name, "category": e_cat, "opposition_team": e_opp, "start_time": e_time
+                        }).eq('id', c_data['id']).execute()
+                        st.success("Updated!"); time.sleep(1.5); st.rerun()
+                        
+                if st.button(f"🚨 Delete {edit_comp_name} 🚨", type="primary"):
+                    supabase.table('competitions').delete().eq('id', c_data['id']).execute()
+                    st.success("Deleted."); time.sleep(1.5); st.rerun()
+                    
+        # TAB 4: EDIT MATCH
+        with tab4:
+            st.subheader("Edit/Delete Match")
+            if comps:
+                comp_names_dict = {f"{c['category']} {c['comp_name']}": c['id'] for c in comps}
+                t_comp = st.selectbox("Competition", list(comp_names_dict.keys()), key="edit_m_c")
+                p_list = [p for p in pairings if p["competition_id"] == comp_names_dict[t_comp]]
+                
+                if p_list:
+                    p_opts = {f"{p.get('landb_player')} vs {p.get('opposition_player')}": p for p in p_list}
+                    sel_p = st.selectbox("Match to Edit", list(p_opts.keys()))
+                    p_data = p_opts[sel_p]
+                    
+                    with st.form("edit_match_form"):
+                        col1, col2 = st.columns(2)
+                        e_lb = col1.text_input("L&B Player", value=p_data.get('landb_player', ''))
+                        e_opp = col2.text_input("Opposition Player", value=p_data.get('opposition_player', ''))
+                        if st.form_submit_button("Update Match"):
+                            supabase.table('pairings').update({
+                                "landb_player": e_lb, "opposition_player": e_opp
+                            }).eq('id', p_data['id']).execute()
+                            st.success("Updated!"); time.sleep(1.5); st.rerun()
                     if st.button("🚨 Delete Match 🚨", type="primary"):
-                        try:
-                            supabase.table('pairings').delete().eq('id', p_data['id']).execute()
-                            st.success("Match deleted.")
-                            time.sleep(1.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Database Error: {e}")
+                        supabase.table('pairings').delete().eq('id', p_data['id']).execute()
+                        st.success("Deleted."); time.sleep(1.5); st.rerun()
 
-    # --- TAB 5: MANAGER LINKS ---
-    with tab5:
-        st.subheader("Distribute Manager Links")
-        st.write("Send these links to your team managers. When they click the link, the app will lock them into their specific competition with no admin controls.")
-        
-        st.info("**Instructions:** Copy the text block below and add it to the very end of your main Streamlit App URL.")
-        
-        for comp_name in matches_data.keys():
-            safe_comp_name = urllib.parse.quote(comp_name)
-            link_extension = f"/?role=manager&comp={safe_comp_name}"
+        # TAB 5: ACCESS LINKS
+        with tab5:
+            st.subheader("System Access Links")
+            st.write("Save these links or send them to your team managers.")
             
-            st.markdown(f"**{comp_name}**")
-            st.code(link_extension, language="text")
+            st.markdown("**Admin Console Link** (Password Required):")
+            st.code("/?role=admin", language="text")
+            
+            st.divider()
+            st.markdown("**Manager Portal Links** (Locks user to specific competition):")
+            for c in comps:
+                safe_comp_name = urllib.parse.quote(f"{c['category']} {c['comp_name']}")
+                st.markdown(f"**{c['category']} {c['comp_name']}**")
+                st.code(f"/?role=manager&comp={safe_comp_name}", language="text")
