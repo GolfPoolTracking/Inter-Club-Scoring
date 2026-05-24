@@ -56,6 +56,13 @@ def calculate_overall_score(pairings):
 
 def safe_index(lst, val): return lst.index(val) if val in lst else 0
 
+def get_base64_image(image_path):
+    try:
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode('utf-8')
+    except Exception:
+        return None
+
 # --- HTML GENERATORS (FOR MOBILE-SAFE SIDE-BY-SIDE LAYOUTS) ---
 def generate_scoreboard_html(lb_score, opp_score, opp_team_name):
     return f"""
