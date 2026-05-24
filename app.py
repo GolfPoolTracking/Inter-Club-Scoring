@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import time
 from supabase import create_client
 
 # --- CONFIGURATION ---
@@ -152,6 +153,7 @@ elif view == "Live Scoring (Admin)":
         if st.button("Update Comp Status"):
             supabase.table('competitions').update({'status': new_comp_status}).eq('id', data['id']).execute()
             st.success("Competition updated!")
+            time.sleep(1.5)
             st.rerun()
 
     st.markdown(f"<h3 style='text-align: center;'>{selected_comp}</h3>", unsafe_allow_html=True)
@@ -209,6 +211,7 @@ elif view == "Live Scoring (Admin)":
                         'leader': new_leader
                     }).eq('id', pairing['id']).execute()
                     st.success("Match updated!")
+                    time.sleep(1.5)
                     st.rerun()
                 except Exception as e:
                     st.error(f"Database Error: {e}")
@@ -246,6 +249,7 @@ elif view == "Create & Manage":
                             "status": "Not Started"
                         }).execute()
                         st.success(f"Created {new_category} {new_comp_name}!")
+                        time.sleep(1.5)
                         st.rerun()
                     except Exception as e:
                         st.error(f"Database Error: {e}")
@@ -283,6 +287,7 @@ elif view == "Create & Manage":
                                 "leader": "Tied"
                             }).execute()
                             st.success("Match added!")
+                            time.sleep(1.5)
                             st.rerun()
                         except Exception as e:
                             st.error(f"Database Error: {e}")
@@ -319,6 +324,7 @@ elif view == "Create & Manage":
                             "match_date": str(e_date)
                         }).eq('id', comp_data['id']).execute()
                         st.success("Competition Updated!")
+                        time.sleep(1.5)
                         st.rerun()
                     except Exception as e:
                         st.error(f"Database Error: {e}")
@@ -329,6 +335,7 @@ elif view == "Create & Manage":
                     try:
                         supabase.table('competitions').delete().eq('id', comp_data['id']).execute()
                         st.success("Competition deleted.")
+                        time.sleep(1.5)
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error: {e}. You may need to delete all matches in this competition first.")
@@ -364,6 +371,7 @@ elif view == "Create & Manage":
                                 "venue": e_venue
                             }).eq('id', p_data['id']).execute()
                             st.success("Match Updated!")
+                            time.sleep(1.5)
                             st.rerun()
                         except Exception as e:
                             st.error(f"Database Error: {e}")
@@ -374,6 +382,7 @@ elif view == "Create & Manage":
                         try:
                             supabase.table('pairings').delete().eq('id', p_data['id']).execute()
                             st.success("Match deleted.")
+                            time.sleep(1.5)
                             st.rerun()
                         except Exception as e:
                             st.error(f"Database Error: {e}")
