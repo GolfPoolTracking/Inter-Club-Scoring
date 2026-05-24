@@ -3,14 +3,14 @@ import pandas as pd
 from datetime import datetime
 import time
 from supabase import create_client
+import urllib.parse
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="L&B Live Scoring", layout="centered")
+st.set_page_config(page_title="L&B Live Scoring", layout="centered", initial_sidebar_state="expanded")
 
 # --- LIST DEFINITIONS ---
 HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
 SCORE_OPTIONS = ["All Square"] + [f"{i} Up" for i in range(1, 10)] + [f"{i} Down" for i in range(1, 10)]
-STATUS_OPTIONS = ["Not Started", "LIVE", "FINISHED"]
 VENUE_OPTIONS = ["Home", "Away"]
 CATEGORY_OPTIONS = ["Men", "Ladies", "Mixed"]
 
@@ -34,14 +34,13 @@ def fetch_matches():
 
         match_dict = {}
         for comp in competitions:
-            # Create a unique display name to handle identically named Men/Ladies comps
             category = comp.get("category", "Mixed")
             comp_name = comp["comp_name"]
             display_name = f"{category} {comp_name}"
             
             match_dict[display_name] = {
                 "id": comp["id"],
-                "raw_comp_name": comp_name, # Saved for the edit form
+                "raw_comp_name": comp_name,
                 "date": comp["match_date"],
                 "category": category,
                 "start_time": comp.get("start_time", ""),
@@ -65,6 +64,7 @@ matches_data = fetch_matches()
 
 # --- HELPER FUNCTIONS ---
 def calculate_overall_score(competition_name, data_source):
+    """Calculates LIVE projected points (1 for lead, 0.5 for tie) for started matches."""
     lb_score = 0.0
     opp_score = 0.0
     
@@ -72,91 +72,114 @@ def calculate_overall_score(competition_name, data_source):
         return lb_score, opp_score
 
     for pairing in data_source[competition_name]["pairings"]:
-        if pairing["status"] == "FINISHED":
+        # Only allocate points if the match is active or finished
+        if pairing["status"] in ["LIVE", "FINISHED"]:
             if pairing["leader"] == "L&B":
-                lb_score += 1
+                lb_score += 1.0
             elif pairing["leader"] == "Opposition":
-                opp_score += 1
-            else:
+                opp_score += 1.0
+            else: # Tied
                 lb_score += 0.5
                 opp_score += 0.5
     return lb_score, opp_score
 
 def get_leader_from_score(score_string):
-    if "Up" in score_string:
-        return "L&B"
-    elif "Down" in score_string:
-        return "Opposition"
+    if "Up" in score_string: return "L&B"
+    elif "Down" in score_string: return "Opposition"
     return "Tied"
 
 def safe_index(options_list, value, default=0):
     return options_list.index(value) if value in options_list else default
 
-# --- UI NAVIGATION ---
-st.sidebar.title("Navigation")
-view = st.sidebar.radio("Go to", ["Match Overview", "Live Scoring (Admin)", "Create & Manage"])
+# --- ROUTING & NAVIGATION ---
+# Check the URL for manager access links
+query_params = st.query_params
+url_role = query_params.get("role", None)
+url_comp = query_params.get("comp", None)
 
 has_comps = len(matches_data) > 0
-if has_comps:
-    selected_comp = st.sidebar.selectbox("Select Competition", list(matches_data.keys()))
-else:
-    selected_comp = None
 
-# --- VIEW 1: MATCH OVERVIEW ---
-if view == "Match Overview":
+# If the URL contains ?role=manager, lock the user into the Manager Portal
+if url_role == "manager" and url_comp in matches_data:
+    st.sidebar.success(f"Manager Access Granted")
+    st.sidebar.info(f"You are managing:\n**{url_comp}**")
+    view = "Manager Portal"
+    selected_comp = url_comp
+else:
+    st.sidebar.title("Navigation")
+    view = st.sidebar.radio("Mode", ["Public Scoreboard", "Manager Portal", "Admin Console"])
+    if view == "Manager Portal" and has_comps:
+        selected_comp = st.sidebar.selectbox("Select Competition to Manage", list(matches_data.keys()))
+    else:
+        selected_comp = None
+
+# --- VIEW 1: PUBLIC SCOREBOARD (Read Only) ---
+if view == "Public Scoreboard":
+    st.markdown("<h2 style='text-align: center;'>L&B Match Center</h2>", unsafe_allow_html=True)
+    st.divider()
+    
     if not has_comps:
-        st.info("No competitions created yet. Go to 'Create & Manage' to start.")
+        st.info("No active competitions.")
         st.stop()
         
-    data = matches_data[selected_comp]
-    lb_score, opp_score = calculate_overall_score(selected_comp, matches_data)
-    
-    # Competition Header Details
-    st.markdown(f"<h2 style='text-align: center;'>{data['raw_comp_name']}</h2>", unsafe_allow_html=True)
-    
-    time_display = f" | {data['start_time']}" if data['start_time'] else ""
-    st.markdown(f"<p style='text-align: center; color: gray; font-weight: bold;'>{data['category']}{time_display}</p>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align: center;'>Laytown & Bettystown vs {data['opposition_team']}<br>{data['date']}</p>", unsafe_allow_html=True)
-    
-    status_colors = {"Not Started": "gray", "LIVE": "#8bc34a", "FINISHED": "darkred"}
-    comp_color = status_colors.get(data['status'], "gray")
-    st.markdown(f"<div style='text-align: center; margin-bottom: 20px;'><span style='background-color: {comp_color}; color: white; padding: 5px 15px; border-radius: 3px;'>{data['status']}</span></div>", unsafe_allow_html=True)
-    
-    st.markdown("<h4 style='text-align: center;'>Overall Score</h4>", unsafe_allow_html=True)
-    
-    col1, col2, col3, col4, col5 = st.columns([1, 2, 1, 2, 1])
-    with col2:
-        st.write("<div style='text-align: center;'><b>L&B</b></div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='background-color: darkblue; color: white; padding: 15px; font-size: 24px; text-align: center; border-radius: 5px;'><b>{lb_score}</b></div>", unsafe_allow_html=True)
-    with col3:
-        st.markdown("<h2 style='text-align: center; padding-top:20px;'>:</h2>", unsafe_allow_html=True)
-    with col4:
-        st.write(f"<div style='text-align: center;'><b>{data['opposition_team']}</b></div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='background-color: darkred; color: white; padding: 15px; font-size: 24px; text-align: center; border-radius: 5px;'><b>{opp_score}</b></div>", unsafe_allow_html=True)
-        
-    st.markdown(f"<p style='text-align: center; font-size: 12px; color: gray; margin-top:20px;'>Last updated: {datetime.now().strftime('%H:%M:%S')}</p>", unsafe_allow_html=True)
-    
-    if st.button("↻ Refresh Scores"):
+    if st.button("↻ Refresh All Scores", use_container_width=True):
         st.rerun()
+        
+    for comp_name, data in matches_data.items():
+        lb_score, opp_score = calculate_overall_score(comp_name, matches_data)
+        
+        # Display Banner
+        st.markdown(f"<h4 style='text-align: center; margin-bottom: 0px;'>{data['raw_comp_name']}</h4>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align: center; color: gray; font-size: 14px;'>{data['category']} | {data['opposition_team']}</p>", unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([2, 1, 2])
+        with col1:
+            st.markdown(f"<div style='background-color: darkblue; color: white; padding: 10px; font-size: 20px; text-align: center; border-radius: 5px;'>L&B: <b>{lb_score}</b></div>", unsafe_allow_html=True)
+        with col2:
+            st.markdown("<h3 style='text-align: center;'>:</h3>", unsafe_allow_html=True)
+        with col3:
+             st.markdown(f"<div style='background-color: darkred; color: white; padding: 10px; font-size: 20px; text-align: center; border-radius: 5px;'>OPP: <b>{opp_score}</b></div>", unsafe_allow_html=True)
+        
+        # Drill-down expander for pairings
+        with st.expander(f"View Pairings (Last updated: {datetime.now().strftime('%H:%M')})"):
+            if not data["pairings"]:
+                st.write("Pairings to be announced.")
+            else:
+                for pairing in data["pairings"]:
+                    pc1, pc2, pc3 = st.columns([1, 1, 1])
+                    with pc1:
+                        st.write(f"**{pairing.get('landb_player', 'TBD')}**")
+                        if pairing['leader'] == 'L&B':
+                            st.markdown(f"<div style='background-color: darkblue; color: white; text-align: center; padding: 3px;'>{pairing['score']}</div>", unsafe_allow_html=True)
+                        elif pairing['leader'] == 'Tied':
+                            st.markdown(f"<div style='background-color: gray; color: white; text-align: center; padding: 3px;'>ALL SQUARE</div>", unsafe_allow_html=True)
+                    with pc2:
+                        hole_val = str(pairing.get('hole', '1'))
+                        hole_display = f"Hole {hole_val}" if hole_val.isdigit() else hole_val 
+                        st.markdown(f"<div style='background-color: black; color: white; text-align: center; padding: 2px; margin-top: 5px;'>{hole_display}</div>", unsafe_allow_html=True)
+                        status_color = "gray" if pairing['status'] == "Not Started" else ("darkred" if pairing['status'] == "FINISHED" else "#8bc34a")
+                        st.markdown(f"<div style='background-color: {status_color}; color: white; text-align: center; padding: 2px;'>{pairing['status']}</div>", unsafe_allow_html=True)
+                    with pc3:
+                         st.write(f"**{pairing.get('opposition_player', 'TBD')}**")
+                         if pairing['leader'] == 'Opposition':
+                            display_score = pairing['score'].replace("Down", "Up") 
+                            st.markdown(f"<div style='background-color: darkred; color: white; text-align: center; padding: 3px;'>{display_score}</div>", unsafe_allow_html=True)
+                         elif pairing['leader'] == 'Tied':
+                            st.markdown(f"<div style='background-color: gray; color: white; text-align: center; padding: 3px;'>ALL SQUARE</div>", unsafe_allow_html=True)
+                    st.write("---")
+        st.divider()
 
-# --- VIEW 2: LIVE SCORING ADMIN ---
-elif view == "Live Scoring (Admin)":
+# --- VIEW 2: MANAGER PORTAL (Live Scoring Updates) ---
+elif view == "Manager Portal":
     if not has_comps:
         st.warning("No competitions available.")
         st.stop()
         
     data = matches_data[selected_comp]
     lb_score, opp_score = calculate_overall_score(selected_comp, matches_data)
-    
-    with st.expander("⚙️ Edit Competition Status", expanded=False):
-        new_comp_status = st.selectbox("Overall Status", STATUS_OPTIONS, index=safe_index(STATUS_OPTIONS, data['status']))
-        if st.button("Update Comp Status"):
-            supabase.table('competitions').update({'status': new_comp_status}).eq('id', data['id']).execute()
-            st.success("Competition updated!")
-            time.sleep(1.5)
-            st.rerun()
 
-    st.markdown(f"<h3 style='text-align: center;'>{selected_comp}</h3>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='text-align: center;'>Manage: {selected_comp}</h3>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center;'>Live Score: L&B <b>{lb_score}</b> - <b>{opp_score}</b> {data['opposition_team']}</p>", unsafe_allow_html=True)
     st.divider()
     
     if not data["pairings"]:
@@ -174,7 +197,7 @@ elif view == "Live Scoring (Admin)":
                 st.markdown(f"<div style='background-color: gray; color: white; text-align: center; padding: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
         
         with pc2:
-            st.write("&nbsp;") # Spacing alignment
+            st.write("&nbsp;")
             hole_val = str(pairing.get('hole', '1'))
             hole_display = f"Hole {hole_val}" if hole_val.isdigit() else hole_val 
             st.markdown(f"<div style='background-color: black; color: white; text-align: center; padding: 2px;'>{hole_display}</div>", unsafe_allow_html=True)
@@ -190,26 +213,34 @@ elif view == "Live Scoring (Admin)":
              elif pairing['leader'] == 'Tied':
                 st.markdown(f"<div style='background-color: gray; color: white; text-align: center; padding: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
 
-        with st.expander(f"Update Match: {pairing.get('landb_player')} vs {pairing.get('opposition_player')}"):
-            uc1, uc2, uc3 = st.columns(3)
+        with st.expander(f"Update: {pairing.get('landb_player')} vs {pairing.get('opposition_player')}", expanded=False):
+            uc1, uc2 = st.columns(2)
             
             current_hole = str(pairing.get('hole', '1'))
             current_score = str(pairing.get('score', 'All Square'))
-            current_status = str(pairing.get('status', 'Not Started'))
             
             new_hole = uc1.selectbox("Hole", HOLE_OPTIONS, index=safe_index(HOLE_OPTIONS, current_hole), key=f"hole_{pairing['id']}")
             new_score = uc2.selectbox("Score (Relative to L&B)", SCORE_OPTIONS, index=safe_index(SCORE_OPTIONS, current_score), key=f"score_{pairing['id']}")
-            new_status = uc3.selectbox("Status", STATUS_OPTIONS, index=safe_index(STATUS_OPTIONS, current_status), key=f"status_{pairing['id']}")
             
-            if st.button("Save Update", key=f"btn_{pairing['id']}"):
+            # Replaces the status dropdown
+            is_finished = st.checkbox("Match Finished (Check to lock final score)", value=(pairing['status'] == "FINISHED"), key=f"fin_{pairing['id']}")
+            
+            if st.button("Save Update", key=f"btn_{pairing['id']}", type="primary"):
                 new_leader = get_leader_from_score(new_score)
+                # Automatically assign LIVE or FINISHED
+                auto_status = "FINISHED" if is_finished else "LIVE" 
                 try:
                     supabase.table('pairings').update({
                         'hole': new_hole,
                         'score': new_score,
-                        'status': new_status,
+                        'status': auto_status,
                         'leader': new_leader
                     }).eq('id', pairing['id']).execute()
+                    
+                    # Also set the overall comp status to LIVE if it hasn't been started
+                    if data['status'] == "Not Started":
+                         supabase.table('competitions').update({'status': 'LIVE'}).eq('id', data['id']).execute()
+                         
                     st.success("Match updated!")
                     time.sleep(1.5)
                     st.rerun()
@@ -217,11 +248,11 @@ elif view == "Live Scoring (Admin)":
                     st.error(f"Database Error: {e}")
         st.divider()
 
-# --- VIEW 3: CREATE & MANAGE ---
-elif view == "Create & Manage":
-    st.header("Database Management")
+# --- VIEW 3: ADMIN CONSOLE (Create & Manage) ---
+elif view == "Admin Console":
+    st.header("Admin Console")
     
-    tab1, tab2, tab3, tab4 = st.tabs(["Create Comp", "Add Match", "Edit Comp", "Edit Match"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Create Comp", "Add Match", "Edit Comp", "Edit Match", "Manager Links"])
     
     # --- TAB 1: CREATE COMPETITION ---
     with tab1:
@@ -312,6 +343,9 @@ elif view == "Create & Manage":
                 e_opp_team = e_col3.text_input("Opposition Team", value=comp_data['opposition_team'])
                 e_start_time = e_col4.text_input("Start Time", value=comp_data.get('start_time', ''))
                 
+                # Check for overall status override
+                e_status = st.selectbox("Overall Status Override", ["Not Started", "LIVE", "FINISHED"], index=["Not Started", "LIVE", "FINISHED"].index(comp_data.get('status', 'Not Started')))
+                
                 e_date = st.date_input("Match Date", value=datetime.strptime(comp_data['date'], "%Y-%m-%d").date() if comp_data['date'] else datetime.today())
                 
                 if st.form_submit_button("Update Competition"):
@@ -321,6 +355,7 @@ elif view == "Create & Manage":
                             "category": e_category,
                             "opposition_team": e_opp_team,
                             "start_time": e_start_time,
+                            "status": e_status,
                             "match_date": str(e_date)
                         }).eq('id', comp_data['id']).execute()
                         st.success("Competition Updated!")
@@ -386,3 +421,19 @@ elif view == "Create & Manage":
                             st.rerun()
                         except Exception as e:
                             st.error(f"Database Error: {e}")
+
+    # --- TAB 5: MANAGER LINKS ---
+    with tab5:
+        st.subheader("Distribute Manager Links")
+        st.write("Send these links to your team managers. When they click the link, the app will lock them into their specific competition with no admin controls.")
+        
+        # Get the base URL (handles local testing vs Streamlit Cloud)
+        # Note: In Streamlit Cloud this usually needs to be constructed manually
+        st.info("**Instructions:** Copy the text block below and add it to the very end of your main Streamlit App URL.")
+        
+        for comp_name in matches_data.keys():
+            safe_comp_name = urllib.parse.quote(comp_name)
+            link_extension = f"/?role=manager&comp={safe_comp_name}"
+            
+            st.markdown(f"**{comp_name}**")
+            st.code(link_extension, language="text")
