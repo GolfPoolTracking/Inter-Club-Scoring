@@ -206,6 +206,8 @@ if view == "Public Scoreboard":
                             st.markdown(f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>{pairing['score']}</div>", unsafe_allow_html=True)
                         elif pairing['leader'] == 'Tied':
                             st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"<div style='padding: 3px; margin-bottom: 5px;'>&nbsp;</div>", unsafe_allow_html=True)
                         st.write(f"**{pairing.get('landb_player', 'TBD')}**")
                     with pc2:
                         hole_val = str(pairing.get('hole', '1'))
@@ -219,6 +221,8 @@ if view == "Public Scoreboard":
                             st.markdown(f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>{display_score}</div>", unsafe_allow_html=True)
                          elif pairing['leader'] == 'Tied':
                             st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
+                         else:
+                            st.markdown(f"<div style='padding: 3px; margin-bottom: 5px;'>&nbsp;</div>", unsafe_allow_html=True)
                          st.write(f"**{pairing.get('opposition_player', 'TBD')}**")
                     st.write("---")
         st.divider()
@@ -252,6 +256,8 @@ elif view == "Manager Portal":
                 st.markdown(f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>{pairing['score']}</div>", unsafe_allow_html=True)
             elif pairing['leader'] == 'Tied':
                 st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='padding: 5px; margin-bottom: 5px;'>&nbsp;</div>", unsafe_allow_html=True)
             st.write(f"**{pairing.get('landb_player', 'TBD')}**")
             st.caption(f"📍 {pairing.get('venue', 'Unknown')}")
         
@@ -269,7 +275,10 @@ elif view == "Manager Portal":
                 st.markdown(f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>{display_score}</div>", unsafe_allow_html=True)
              elif pairing['leader'] == 'Tied':
                 st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
+             else:
+                st.markdown(f"<div style='padding: 5px; margin-bottom: 5px;'>&nbsp;</div>", unsafe_allow_html=True)
              st.write(f"**{pairing.get('opposition_player', 'TBD')}**")
+             st.caption("&nbsp;") 
 
         with st.expander(f"Update: {pairing.get('landb_player')} vs {pairing.get('opposition_player')}", expanded=False):
             uc1, uc2 = st.columns(2)
