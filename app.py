@@ -1,6 +1,19 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from supabase import create_client
+
+st.set_page_config(page_title="L&B Live Scoring", layout="centered")
+
+# --- DATABASE CONNECTION ---
+# st.cache_resource ensures we only connect once, not on every button click
+@st.cache_resource
+def init_connection():
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+supabase = init_connection()
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="L&B Live Scoring", layout="centered")
