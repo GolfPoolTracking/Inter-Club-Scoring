@@ -158,7 +158,7 @@ elif view == "Live Scoring (Admin)":
         
         # Player 1 Col (L&B)
         with pc1:
-            st.write(f"**{pairing.get('lb_player', 'TBD')}**")
+            st.write(f"**{pairing.get('landb_player', 'TBD')}**")
             st.caption(f"📍 {pairing.get('venue', 'Unknown')}")
             if pairing['leader'] == 'L&B':
                 st.markdown(f"<div style='background-color: darkblue; color: white; text-align: center; padding: 5px;'>{pairing['score']}</div>", unsafe_allow_html=True)
@@ -192,7 +192,7 @@ elif view == "Live Scoring (Admin)":
                 st.markdown(f"<div style='background-color: gray; color: white; text-align: center; padding: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
 
         # Admin Controls for Pairing
-        with st.expander(f"Update Match: {pairing.get('lb_player')} vs {pairing.get('opposition_player')}"):
+        with st.expander(f"Update Match: {pairing.get('landb_player')} vs {pairing.get('opposition_player')}"):
             uc1, uc2, uc3 = st.columns(3)
             
             current_hole = str(pairing.get('hole', '1'))
@@ -254,19 +254,19 @@ elif view == "Create & Manage":
             target_comp = st.selectbox("Select Competition", list(comp_options.keys()))
             
             col1, col2 = st.columns(2)
-            lb_player = col1.text_input("L&B Player Name")
-            opp_player = col2.text_input("Opposition Player Name")
+            lb_player_input = col1.text_input("L&B Player Name")
+            opp_player_input = col2.text_input("Opposition Player Name")
             
             col3, col4 = st.columns(2)
             match_venue = col3.selectbox("Venue", VENUE_OPTIONS)
             match_time = col4.text_input("Start Time (e.g., 09:30)")
             
             if st.form_submit_button("Add Match Pairing"):
-                if lb_player and opp_player:
+                if lb_player_input and opp_player_input:
                     supabase.table('pairings').insert({
                         "competition_id": comp_options[target_comp],
-                        "lb_player": lb_player,
-                        "opposition_player": opp_player,
+                        "landb_player": lb_player_input,
+                        "opposition_player": opp_player_input,
                         "venue": match_venue,
                         "start_time": match_time,
                         "hole": "1",
