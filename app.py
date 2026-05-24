@@ -12,14 +12,14 @@ st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sid
 
 # Inject Noto Serif font safely and hide default menus
 st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap');
-    div, p, h1, h2, h3, h4, h5, h6, .stMarkdown, .stButton, .stRadio, .stCheckbox { 
-        font-family: 'Noto Serif', serif !important; 
-    }
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    </style>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap');
+div, p, h1, h2, h3, h4, h5, h6, .stMarkdown, .stButton, .stRadio, .stCheckbox { 
+    font-family: 'Noto Serif', serif !important; 
+}
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+</style>
 """, unsafe_allow_html=True)
 
 # L&B Palette
@@ -35,6 +35,13 @@ def init_connection():
 supabase = init_connection()
 
 # --- HELPERS ---
+def get_base64_image(image_path):
+    try:
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode('utf-8')
+    except Exception:
+        return None
+
 def get_leader_from_score(score_string):
     if "Up" in score_string: return "L&B"
     elif "Down" in score_string: return "Opposition"
@@ -56,42 +63,18 @@ def calculate_overall_score(pairings):
 
 def safe_index(lst, val): return lst.index(val) if val in lst else 0
 
-def get_base64_image(image_path):
-    try:
-        with open(image_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode('utf-8')
-    except Exception:
-        return None
-
-# --- HTML GENERATORS (FOR MOBILE-SAFE SIDE-BY-SIDE LAYOUTS) ---
+# --- FLATTENED HTML GENERATORS (Fixes the Markdown Code Block Bug) ---
 def generate_scoreboard_html(lb_score, opp_score, opp_team_name):
-    return f"""
-    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto;">
-        <div style="flex: 2; text-align: center; padding: 0 10px;">
-            <div style="font-weight: bold; margin-bottom: 5px; font-size: 16px;">L&B</div>
-            <div style="background-color: {LB_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;">{lb_score}</div>
-        </div>
-        <div style="flex: 1; text-align: center; font-size: 35px; font-weight: bold; padding-top: 25px;">
-            :
-        </div>
-        <div style="flex: 2; text-align: center; padding: 0 10px;">
-            <div style="font-weight: bold; margin-bottom: 5px; font-size: 16px;">{opp_team_name}</div>
-            <div style="background-color: {OPP_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;">{opp_score}</div>
-        </div>
-    </div>
-    """
+    return f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto;'><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>L&B</div><div style='background-color: {LB_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{lb_score}</div></div><div style='flex: 1; text-align: center; font-size: 35px; font-weight: bold; padding-top: 25px;'>:</div><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>{opp_team_name}</div><div style='background-color: {OPP_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{opp_score}</div></div></div>"
 
 def generate_pairing_html(p, view_mode="public"):
-    # L&B Score Block
     if p['leader'] == 'L&B':
         lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{p['score']}</div>"
     elif p['leader'] == 'Tied':
         lb_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>ALL SQUARE</div>"
     else:
-        # Invisible spacer maintains exact height to keep names perfectly aligned
         lb_score_html = f"<div style='padding: 4px; visibility: hidden;'>Spacer</div>"
         
-    # Opp Score Block
     if p['leader'] == 'Opposition':
         opp_score_html = f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{p['score'].replace('Down', 'Up')}</div>"
     elif p['leader'] == 'Tied':
@@ -105,23 +88,7 @@ def generate_pairing_html(p, view_mode="public"):
     
     venue_html = f"<div style='font-size: 11px; color: gray; margin-top: 4px;'>📍 {p.get('venue', 'Unknown')}</div>" if view_mode == "manager" else ""
     
-    return f"""
-    <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 10px;">
-        <div style="flex: 1; text-align: center; padding: 0 4px; width: 33%;">
-            {lb_score_html}
-            <div style="font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;">{p.get('landb_player', 'TBD')}</div>
-            {venue_html}
-        </div>
-        <div style="flex: 1; text-align: center; padding: 0 4px; width: 33%;">
-            <div style="background-color: black; color: white; padding: 2px; font-size: 13px; border-radius: 3px; margin-bottom: 4px;">{hole_display}</div>
-            <div style="background-color: {p_status_color}; color: white; padding: 2px; font-size: 11px; font-weight: bold; border-radius: 3px;">{p['status']}</div>
-        </div>
-        <div style="flex: 1; text-align: center; padding: 0 4px; width: 33%;">
-            {opp_score_html}
-            <div style="font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;">{p.get('opposition_player', 'TBD')}</div>
-        </div>
-    </div>
-    """
+    return f"<div style='display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 10px;'><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{lb_score_html}<div style='font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;'>{p.get('landb_player', 'TBD')}</div>{venue_html}</div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'><div style='background-color: black; color: white; padding: 2px; font-size: 13px; border-radius: 3px; margin-bottom: 4px;'>{hole_display}</div><div style='background-color: {p_status_color}; color: white; padding: 2px; font-size: 11px; font-weight: bold; border-radius: 3px;'>{p['status']}</div></div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{opp_score_html}<div style='font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;'>{p.get('opposition_player', 'TBD')}</div></div></div>"
 
 # --- LIST DEFINITIONS ---
 HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
@@ -146,21 +113,12 @@ query_params = st.query_params
 role = query_params.get("role", "public")
 
 # --- VIEW 1: PUBLIC SCOREBOARD ---
-# --- VIEW 1: PUBLIC SCOREBOARD ---
 if role == "public":
-    # Safely load the logo
-    logo_base64 = get_base64_image("static/lb_logo.png")
-    if logo_base64:
-        logo_html = f'<img src="data:image/png;base64,{logo_base64}" width="120" style="margin-bottom: 5px;"/>'
-    else:
-        logo_html = "" # Failsafe if the image isn't found
+    # Safely load the local logo
+    logo_base64 = get_base64_image("app/static/lb_logo.png") or get_base64_image("static/lb_logo.png")
+    logo_html = f'<img src="data:image/png;base64,{logo_base64}" width="120" style="margin-bottom: 5px;"/>' if logo_base64 else ""
 
-    st.markdown(f"""
-        <div style="text-align: center;">
-            {logo_html}
-            <h2 style='font-weight: 700; margin-top: 0px;'>L&B Match Centre</h2>
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align: center;'>{logo_html}<h2 style='font-weight: 700; margin-top: 0px;'>L&B Match Centre</h2></div>", unsafe_allow_html=True)
     st.divider()
     
     if not comps:
@@ -227,7 +185,6 @@ elif role == "manager":
 
 # --- VIEW 3: ADMIN CONSOLE ---
 elif role == "admin":
-    # Simple Session State Password Logic
     if "admin_auth" not in st.session_state:
         st.session_state.admin_auth = False
 
@@ -249,7 +206,6 @@ elif role == "admin":
             
         tab1, tab2, tab3, tab4, tab5 = st.tabs(["Create Comp", "Add Match", "Edit Comp", "Edit Match", "Access Links"])
         
-        # TAB 1: CREATE COMPETITION
         with tab1:
             st.subheader("Create New Competition")
             with st.form("create_comp_form", clear_on_submit=True):
@@ -272,7 +228,6 @@ elif role == "admin":
                     else:
                         st.error("Please fill out Name and Opposition.")
                         
-        # TAB 2: ADD MATCH
         with tab2:
             st.subheader("Add Match to Competition")
             if comps:
@@ -296,7 +251,6 @@ elif role == "admin":
                         else:
                             st.error("Please enter both player names.")
                             
-        # TAB 3: EDIT COMP
         with tab3:
             st.subheader("Edit/Delete Competition")
             if comps:
@@ -322,7 +276,6 @@ elif role == "admin":
                     supabase.table('competitions').delete().eq('id', c_data['id']).execute()
                     st.success("Deleted."); time.sleep(1.5); st.rerun()
                     
-        # TAB 4: EDIT MATCH
         with tab4:
             st.subheader("Edit/Delete Match")
             if comps:
@@ -348,7 +301,6 @@ elif role == "admin":
                         supabase.table('pairings').delete().eq('id', p_data['id']).execute()
                         st.success("Deleted."); time.sleep(1.5); st.rerun()
 
-        # TAB 5: ACCESS LINKS
         with tab5:
             st.subheader("System Access Links")
             st.write("Save these links or send them to your team managers.")
