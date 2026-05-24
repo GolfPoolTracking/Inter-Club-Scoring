@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 import time
 from supabase import create_client
 import urllib.parse
+import base64
 
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
