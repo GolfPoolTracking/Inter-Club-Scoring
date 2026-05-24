@@ -253,9 +253,14 @@ elif view == "Create & Manage":
             comp_options = {name: data['id'] for name, data in matches_data.items()}
             target_comp = st.selectbox("Select Competition", list(comp_options.keys()))
             
+            # --- NEW LOGIC: Get the opposition team name for the default value ---
+            default_opp_name = matches_data[target_comp]["opposition_team"] if target_comp else ""
+            
             col1, col2 = st.columns(2)
             lb_player_input = col1.text_input("L&B Player Name")
-            opp_player_input = col2.text_input("Opposition Player Name")
+            
+            # --- NEW LOGIC: Inject the default value into the text box ---
+            opp_player_input = col2.text_input("Opposition Player Name", value=default_opp_name)
             
             col3, col4 = st.columns(2)
             match_venue = col3.selectbox("Venue", VENUE_OPTIONS)
