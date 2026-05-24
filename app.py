@@ -202,11 +202,11 @@ if view == "Public Scoreboard":
                 for pairing in data["pairings"]:
                     pc1, pc2, pc3 = st.columns([1, 1, 1])
                     with pc1:
-                        st.write(f"**{pairing.get('landb_player', 'TBD')}**")
                         if pairing['leader'] == 'L&B':
-                            st.markdown(f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px;'>{pairing['score']}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>{pairing['score']}</div>", unsafe_allow_html=True)
                         elif pairing['leader'] == 'Tied':
-                            st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px;'>ALL SQUARE</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
+                        st.write(f"**{pairing.get('landb_player', 'TBD')}**")
                     with pc2:
                         hole_val = str(pairing.get('hole', '1'))
                         hole_display = f"Hole {hole_val}" if hole_val.isdigit() else hole_val 
@@ -214,12 +214,12 @@ if view == "Public Scoreboard":
                         p_status_color = "gray" if pairing['status'] == "Not Started" else ("darkred" if pairing['status'] == "FINISHED" else "#8bc34a")
                         st.markdown(f"<div style='background-color: {p_status_color}; color: white; text-align: center; padding: 2px; font-size: 12px; font-weight: bold; border-radius: 3px;'>{pairing['status']}</div>", unsafe_allow_html=True)
                     with pc3:
-                         st.write(f"**{pairing.get('opposition_player', 'TBD')}**")
                          if pairing['leader'] == 'Opposition':
                             display_score = pairing['score'].replace("Down", "Up") 
-                            st.markdown(f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px;'>{display_score}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>{display_score}</div>", unsafe_allow_html=True)
                          elif pairing['leader'] == 'Tied':
-                            st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px;'>ALL SQUARE</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 3px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
+                         st.write(f"**{pairing.get('opposition_player', 'TBD')}**")
                     st.write("---")
         st.divider()
 
@@ -248,12 +248,12 @@ elif view == "Manager Portal":
         pc1, pc2, pc3 = st.columns([1, 1, 1])
         
         with pc1:
+            if pairing['leader'] == 'L&B':
+                st.markdown(f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>{pairing['score']}</div>", unsafe_allow_html=True)
+            elif pairing['leader'] == 'Tied':
+                st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
             st.write(f"**{pairing.get('landb_player', 'TBD')}**")
             st.caption(f"📍 {pairing.get('venue', 'Unknown')}")
-            if pairing['leader'] == 'L&B':
-                st.markdown(f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px;'>{pairing['score']}</div>", unsafe_allow_html=True)
-            elif pairing['leader'] == 'Tied':
-                st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px;'>ALL SQUARE</div>", unsafe_allow_html=True)
         
         with pc2:
             st.write("&nbsp;")
@@ -264,13 +264,12 @@ elif view == "Manager Portal":
             st.markdown(f"<div style='background-color: {p_status_color}; color: white; text-align: center; padding: 2px; font-size: 12px; font-weight: bold; border-radius: 3px;'>{pairing['status']}</div>", unsafe_allow_html=True)
             
         with pc3:
-             st.write(f"**{pairing.get('opposition_player', 'TBD')}**")
-             st.caption("&nbsp;") 
              if pairing['leader'] == 'Opposition':
                 display_score = pairing['score'].replace("Down", "Up") 
-                st.markdown(f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px;'>{display_score}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>{display_score}</div>", unsafe_allow_html=True)
              elif pairing['leader'] == 'Tied':
-                st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px;'>ALL SQUARE</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 5px; font-weight: bold; border-radius: 3px; margin-bottom: 5px;'>ALL SQUARE</div>", unsafe_allow_html=True)
+             st.write(f"**{pairing.get('opposition_player', 'TBD')}**")
 
         with st.expander(f"Update: {pairing.get('landb_player')} vs {pairing.get('opposition_player')}", expanded=False):
             uc1, uc2 = st.columns(2)
