@@ -89,7 +89,7 @@ def should_hide_names(comp):
     except Exception:
         return False
 
-# --- FLATTENED HTML GENERATORS (Fixes Markdown Bug) ---
+# --- HTML GENERATORS ---
 def generate_scoreboard_html(lb_score, opp_score, opp_team_name):
     return f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto;'><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>L&B</div><div style='background-color: {LB_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{lb_score}</div></div><div style='flex: 1; text-align: center; font-size: 35px; font-weight: bold; padding-top: 25px;'>:</div><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>{opp_team_name}</div><div style='background-color: {OPP_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{opp_score}</div></div></div>"
 
@@ -126,7 +126,7 @@ VENUE_OPTIONS = ["Home", "Away"]
 CATEGORY_OPTIONS = ["Mens", "Womens", "Boys", "Mixed"]
 
 # --- DATA FETCHING ---
-@st.cache_data(ttl=10) # Refreshes cache every 10 seconds normally
+@st.cache_data(ttl=10)
 def fetch_all():
     try:
         comps = supabase.table("competitions").select("*").execute().data
@@ -163,11 +163,8 @@ if role == "public":
         
         lb, opp = calculate_overall_score(comp_pairings)
         status = get_comp_status(comp_pairings)
-        
-        # Check if we need to hide the names for this specific competition
         hide_names = should_hide_names(comp)
         
-        # Append Round if it exists
         round_text = f" - {comp['round']}" if comp.get('round') else ""
         full_title = f"{comp['category']} {comp['comp_name']}{round_text}"
         
@@ -177,6 +174,8 @@ if role == "public":
         st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team']), unsafe_allow_html=True)
         
         with st.expander(f"View Pairings (Last updated: {datetime.now(ireland_tz).strftime('%H:%M')})"):
+            if not comp_pairings:
+                st.write("Pairings to be announced.")
             for p in comp_pairings:
                 st.markdown(generate_pairing_html(p, "public", hide_names), unsafe_allow_html=True)
                 st.write("---")
@@ -202,7 +201,6 @@ elif role == "manager":
             st.info("No matches added to this competition yet.")
             
         for p in comp_pairings:
-            # Managers always see the real names, never hidden
             st.markdown(generate_pairing_html(p, "manager", hide_names=False), unsafe_allow_html=True)
             
             with st.expander(f"Update: {p['landb_player']} vs {p['opposition_player']}", expanded=False):
@@ -217,7 +215,7 @@ elif role == "manager":
                         "hole": h, "score": sc, "status": "FINISHED" if fin else "LIVE", "leader": new_leader
                     }).eq("id", p['id']).execute()
                     
-                    fetch_all.clear() # Clear cache so update is instant
+                    fetch_all.clear()
                     st.success("Updated!"); time.sleep(1.5); st.rerun()
             st.divider()
     else:
@@ -266,18 +264,20 @@ elif role == "admin":
                 
                 if st.form_submit_button("Create Competition"):
                     if new_comp_name and new_opp_team:
-                        time_string = new_start_time.strftime("%H:%M") if new_start_time else ""
+                        time_string = new_start_time.strftime("%H:%M") if new_start_time else None
+                        round_val = new_round if new_round.strip() else None
+                        
                         supabase.table('competitions').insert({
                             "comp_name": new_comp_name, 
                             "category": new_category,
                             "opposition_team": new_opp_team, 
-                            "round": new_round,
+                            "round": round_val,
                             "match_date": str(new_date),
                             "start_time": time_string,
                             "hide_mins": new_hide_mins
                         }).execute()
                         
-                        fetch_all.clear() # Cache clear
+                        fetch_all.clear() 
                         st.success(f"Created {new_category} {new_comp_name}!"); time.sleep(1.5); st.rerun()
                     else:
                         st.error("Please fill out Name and Opposition.")
@@ -307,7 +307,7 @@ elif role == "admin":
                                 "status": "Not Started", "leader": "Tied"
                             }).execute()
                             
-                            fetch_all.clear() # Cache clear
+                            fetch_all.clear()
                             st.success("Match added!"); time.sleep(1.5); st.rerun()
                         else:
                             st.error("Please enter both player names.")
@@ -316,73 +316,102 @@ elif role == "admin":
         with tab3:
             st.subheader("Edit/Delete Competition")
             if comps:
-                comp_names_dict = {f"{c['category']} {c['comp_name']}": c for c in comps}
-                edit_comp_name = st.selectbox("Select Competition", list(comp_names_dict.keys()))
-                c_data = comp_names_dict[edit_comp_name]
+                # Add Filter
+                filter_cat = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_edit_comp")
+                filtered_comps = [c for c in comps if filter_cat == "All" or c['category'] == filter_cat]
                 
-                with st.form("edit_comp_form"):
-                    e_c1, e_c2 = st.columns(2)
-                    e_cat = e_c1.selectbox("Category", CATEGORY_OPTIONS, index=safe_index(CATEGORY_OPTIONS, c_data['category']))
-                    e_name = e_c2.text_input("Competition Name", value=c_data['comp_name'])
+                if filtered_comps:
+                    comp_names_dict = {f"{c['category']} {c['comp_name']}": c for c in filtered_comps}
+                    edit_comp_name = st.selectbox("Select Competition", list(comp_names_dict.keys()))
+                    c_data = comp_names_dict[edit_comp_name]
                     
-                    e_c3, e_c4 = st.columns(2)
-                    e_opp = e_c3.text_input("Opposition Team", value=c_data['opposition_team'])
-                    e_round = e_c4.text_input("Round", value=c_data.get('round', ''))
-                    
-                    e_c5, e_c6 = st.columns(2)
-                    e_date = e_c5.date_input("Match Date", value=datetime.strptime(c_data['date'], "%Y-%m-%d").date() if c_data.get('date') else datetime.now(ireland_tz).date())
-                    parsed_time = safe_time_parse(c_data.get('start_time', ''))
-                    e_time = e_c6.time_input("Start Time", value=parsed_time)
-                    
-                    e_hide_mins = st.number_input("Hide Player Names Until (Mins before)", min_value=0, value=int(c_data.get('hide_mins', 0)), step=15)
-                    
-                    if st.form_submit_button("Update Competition"):
-                        updated_time_str = e_time.strftime("%H:%M") if e_time else ""
-                        supabase.table('competitions').update({
-                            "comp_name": e_name, "category": e_cat, "opposition_team": e_opp, 
-                            "round": e_round, "match_date": str(e_date), "start_time": updated_time_str,
-                            "hide_mins": e_hide_mins
-                        }).eq('id', c_data['id']).execute()
+                    with st.form("edit_comp_form"):
+                        e_c1, e_c2 = st.columns(2)
+                        e_cat = e_c1.selectbox("Category", CATEGORY_OPTIONS, index=safe_index(CATEGORY_OPTIONS, c_data['category']))
+                        e_name = e_c2.text_input("Competition Name", value=c_data['comp_name'])
                         
-                        fetch_all.clear() # Cache clear
-                        st.success("Updated!"); time.sleep(1.5); st.rerun()
+                        e_c3, e_c4 = st.columns(2)
+                        e_opp = e_c3.text_input("Opposition Team", value=c_data['opposition_team'])
+                        e_round = e_c4.text_input("Round", value=c_data.get('round', ''))
                         
-                if st.button(f"🚨 Delete {edit_comp_name} 🚨", type="primary"):
-                    supabase.table('competitions').delete().eq('id', c_data['id']).execute()
-                    fetch_all.clear() # Cache clear
-                    st.success("Deleted."); time.sleep(1.5); st.rerun()
+                        e_c5, e_c6 = st.columns(2)
+                        
+                        # Safe Date Parsing
+                        try:
+                            parsed_date = datetime.strptime(c_data['match_date'], "%Y-%m-%d").date() if c_data.get('match_date') else datetime.now(ireland_tz).date()
+                        except:
+                            parsed_date = datetime.now(ireland_tz).date()
+                            
+                        e_date = e_c5.date_input("Match Date", value=parsed_date)
+                        
+                        parsed_time = safe_time_parse(c_data.get('start_time', ''))
+                        e_time = e_c6.time_input("Start Time", value=parsed_time)
+                        
+                        e_hide_mins = st.number_input("Hide Player Names Until (Mins before)", min_value=0, value=int(c_data.get('hide_mins') or 0), step=15)
+                        
+                        if st.form_submit_button("Update Competition"):
+                            updated_time_str = e_time.strftime("%H:%M") if e_time else None
+                            updated_round_str = e_round if e_round.strip() else None
+                            
+                            try:
+                                supabase.table('competitions').update({
+                                    "comp_name": e_name, "category": e_cat, "opposition_team": e_opp, 
+                                    "round": updated_round_str, "match_date": str(e_date), "start_time": updated_time_str,
+                                    "hide_mins": e_hide_mins
+                                }).eq('id', c_data['id']).execute()
+                                
+                                fetch_all.clear()
+                                st.success("Updated!"); time.sleep(1.5); st.rerun()
+                            except Exception as e:
+                                st.error(f"Database Error: {e}")
+                                
+                    if st.button(f"🚨 Delete {edit_comp_name} 🚨", type="primary"):
+                        supabase.table('competitions').delete().eq('id', c_data['id']).execute()
+                        fetch_all.clear()
+                        st.success("Deleted."); time.sleep(1.5); st.rerun()
+                else:
+                    st.info(f"No {filter_cat} competitions found.")
                     
         # TAB 4: EDIT MATCH
         with tab4:
             st.subheader("Edit/Delete Match")
             if comps:
-                comp_names_dict = {f"{c['category']} {c['comp_name']}": c['id'] for c in comps}
-                t_comp = st.selectbox("Competition", list(comp_names_dict.keys()), key="edit_m_c")
-                p_list = [p for p in pairings if p["competition_id"] == comp_names_dict[t_comp]]
+                # Add Filter
+                filter_cat_m = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_edit_match")
+                filtered_comps_m = [c for c in comps if filter_cat_m == "All" or c['category'] == filter_cat_m]
                 
-                if p_list:
-                    p_opts = {f"{p.get('landb_player')} vs {p.get('opposition_player')}": p for p in p_list}
-                    sel_p = st.selectbox("Match to Edit", list(p_opts.keys()))
-                    p_data = p_opts[sel_p]
+                if filtered_comps_m:
+                    comp_names_dict_m = {f"{c['category']} {c['comp_name']}": c['id'] for c in filtered_comps_m}
+                    t_comp = st.selectbox("Competition", list(comp_names_dict_m.keys()), key="edit_m_c")
+                    p_list = [p for p in pairings if p["competition_id"] == comp_names_dict_m[t_comp]]
                     
-                    with st.form("edit_match_form"):
-                        col1, col2 = st.columns(2)
-                        e_lb = col1.text_input("L&B Player", value=p_data.get('landb_player', ''))
-                        e_opp = col2.text_input("Opposition Player", value=p_data.get('opposition_player', ''))
-                        e_venue = st.selectbox("Venue", VENUE_OPTIONS, index=safe_index(VENUE_OPTIONS, p_data.get('venue', 'Home')))
+                    if p_list:
+                        p_opts = {f"{p.get('landb_player')} vs {p.get('opposition_player')}": p for p in p_list}
+                        sel_p = st.selectbox("Match to Edit", list(p_opts.keys()))
+                        p_data = p_opts[sel_p]
                         
-                        if st.form_submit_button("Update Match"):
-                            supabase.table('pairings').update({
-                                "landb_player": e_lb, "opposition_player": e_opp, "venue": e_venue
-                            }).eq('id', p_data['id']).execute()
+                        with st.form("edit_match_form"):
+                            col1, col2 = st.columns(2)
+                            e_lb = col1.text_input("L&B Player", value=p_data.get('landb_player', ''))
+                            e_opp = col2.text_input("Opposition Player", value=p_data.get('opposition_player', ''))
+                            e_venue = st.selectbox("Venue", VENUE_OPTIONS, index=safe_index(VENUE_OPTIONS, p_data.get('venue', 'Home')))
                             
-                            fetch_all.clear() # Cache clear
-                            st.success("Updated!"); time.sleep(1.5); st.rerun()
-                            
-                    if st.button("🚨 Delete Match 🚨", type="primary"):
-                        supabase.table('pairings').delete().eq('id', p_data['id']).execute()
-                        fetch_all.clear() # Cache clear
-                        st.success("Deleted."); time.sleep(1.5); st.rerun()
+                            if st.form_submit_button("Update Match"):
+                                supabase.table('pairings').update({
+                                    "landb_player": e_lb, "opposition_player": e_opp, "venue": e_venue
+                                }).eq('id', p_data['id']).execute()
+                                
+                                fetch_all.clear() 
+                                st.success("Updated!"); time.sleep(1.5); st.rerun()
+                                
+                        if st.button("🚨 Delete Match 🚨", type="primary"):
+                            supabase.table('pairings').delete().eq('id', p_data['id']).execute()
+                            fetch_all.clear()
+                            st.success("Deleted."); time.sleep(1.5); st.rerun()
+                    else:
+                        st.info("No matches in this competition.")
+                else:
+                    st.info(f"No {filter_cat_m} competitions found.")
 
         # TAB 5: ACCESS LINKS
         with tab5:
