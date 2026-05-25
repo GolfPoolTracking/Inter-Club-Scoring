@@ -162,7 +162,8 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
 HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
 SCORE_OPTIONS = [f"{i} Up" for i in range(10, 0, -1)] + ["All Square"] + [f"{i} Down" for i in range(1, 11)]
 VENUE_OPTIONS = ["Home", "Away"]
-CATEGORY_OPTIONS = ["Mens", "Womens", "Boys", "Girls", "Mixed"]
+CATEGORY_OPTIONS = ["Mens", "Womens", "Boys", "Mixed"]
+ROUND_OPTIONS = ["Not Applicable", "Round 1", "Round 2", "Round 3", "Round 4", "Quarter-Final", "Semi-Final", "Final"]
 
 # --- DATA FETCHING ---
 @st.cache_data(ttl=10)
@@ -311,8 +312,7 @@ elif role == "admin":
             pwd = st.text_input("Enter Admin Password", type="password")
             submit_button = st.form_submit_button("Login", use_container_width=True)
             
-            if submit_button:    
-                # Fallback to empty string to prevent crashes if secret is missing
+            if submit_button:
                 correct_password = st.secrets.get("ADMIN_PASSWORD", "")
                 if pwd == correct_password and pwd != "":
                     st.session_state.admin_auth = True
@@ -337,9 +337,8 @@ elif role == "admin":
                 
                 with st.form("create_comp_form", clear_on_submit=True):
                     col1, col2 = st.columns(2)
-                    # Opposition team is manually entered since it's no longer in the master table
                     new_opp_team = col1.text_input("Opposition Team")
-                    new_round = col2.text_input("Round (e.g., Semi-Final)")
+                    new_round = col2.selectbox("Round", ROUND_OPTIONS)
                     
                     col3, col4 = st.columns(2)
                     new_date = col3.date_input("Match Date", format="DD/MM/YYYY")
@@ -351,7 +350,7 @@ elif role == "admin":
                         if new_opp_team:
                             secure_access_code = generate_random_code()
                             time_string = new_start_time.strftime("%H:%M") if new_start_time else None
-                            round_val = new_round if new_round.strip() else None
+                            round_val = new_round if new_round != "Not Applicable" else None
                             
                             # EXTRACT YEAR
                             match_year = new_date.year
@@ -395,7 +394,9 @@ elif role == "admin":
                         
                         e_c3, e_c4 = st.columns(2)
                         e_opp = e_c3.text_input("Opposition Team", value=c_data['opposition_team'])
-                        e_round = e_c4.text_input("Round", value=c_data.get('round', ''))
+                        
+                        current_round = c_data.get('round')
+                        e_round = e_c4.selectbox("Round", ROUND_OPTIONS, index=safe_index(ROUND_OPTIONS, current_round if current_round else "Not Applicable"))
                         
                         e_c5, e_c6 = st.columns(2)
                         try: parsed_date = datetime.strptime(c_data['match_date'], "%Y-%m-%d").date() if c_data.get('match_date') else datetime.now(ireland_tz).date()
@@ -412,7 +413,7 @@ elif role == "admin":
                         
                         if st.form_submit_button("Update Competition"):
                             updated_time_str = e_time.strftime("%H:%M") if e_time else None
-                            updated_round_str = e_round if e_round.strip() else None
+                            updated_round_str = e_round if e_round != "Not Applicable" else None
                             
                             # EXTRACT YEAR
                             updated_year = e_date.year
@@ -431,11 +432,14 @@ elif role == "admin":
                                 
                     with st.popover(f"🚨 Delete {edit_comp_name} 🚨", key=f"del_comp_{c_data['id']}"):
                         st.warning(f"Confirm deletion of {edit_comp_name}?")
-                        if st.button("Yes, Delete", key=f"btn_del_comp_{c_data['id']}", type="primary"):
+                        # UI BUG FIX: Using st.empty() so the button disappears immediately when clicked
+                        del_comp_placeholder = st.empty()
+                        if del_comp_placeholder.button("Yes, Delete", key=f"btn_del_comp_{c_data['id']}", type="primary"):
+                            del_comp_placeholder.empty() # Clears the button
                             supabase.table('competitions').delete().eq('id', c_data['id']).execute()
                             fetch_all.clear()
                             st.success("Deleted.")
-                            time.sleep(3)
+                            time.sleep(1.5)
                             st.rerun()
                 else:
                     st.info(f"No {filter_cat} competitions found.")
@@ -521,10 +525,12 @@ elif role == "admin":
                                 fetch_all.clear() 
                                 st.success("Updated!"); time.sleep(1.5); st.rerun()
                         
-                        # Confirmation popover before deleting a match
                         with st.popover("🚨 Delete Match 🚨", key=f"del_match_{p_data['id']}", use_container_width=True):
                             st.warning("Confirm deletion of this match?")
-                            if st.button("Yes, Delete", key=f"btn_del_match_{p_data['id']}", type="primary"):
+                            # UI BUG FIX
+                            del_match_placeholder = st.empty()
+                            if del_match_placeholder.button("Yes, Delete", key=f"btn_del_match_{p_data['id']}", type="primary"):
+                                del_match_placeholder.empty()
                                 supabase.table('pairings').delete().eq('id', p_data['id']).execute()
                                 fetch_all.clear()
                                 st.success("Deleted.")
@@ -599,7 +605,10 @@ elif role == "admin":
                     
                     with st.popover(f"🚨 Delete {m_data['comp_name']} 🚨", use_container_width=True):
                         st.warning(f"Confirm deletion of {m_data['comp_name']} from Master List?")
-                        if st.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary"):
+                        # UI BUG FIX
+                        del_master_placeholder = st.empty()
+                        if del_master_placeholder.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary"):
+                            del_master_placeholder.empty()
                             supabase.table("competitions_master").delete().eq("id", m_data['id']).execute()
                             fetch_all.clear()
                             st.success("Deleted from Master List.")
