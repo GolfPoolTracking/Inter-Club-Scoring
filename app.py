@@ -76,8 +76,8 @@ def safe_time_parse(time_str):
 def should_hide_names(comp):
     """Calculates if the current time is before the reveal window."""
     hide_mins = comp.get('hide_mins')
-    if hide_mins is None or int(hide_mins) <= 0: return False
-    if not comp.get('match_date') or not comp.get('start_time'): return False
+    if hide_mins is None or int(hide_mins) <= 0: return False, None
+    if not comp.get('match_date') or not comp.get('start_time'): return False, None
     
     try:
         dt_str = f"{comp['match_date']} {comp['start_time']}"
@@ -85,17 +85,17 @@ def should_hide_names(comp):
         dt_aware = dt_obj.replace(tzinfo=ireland_tz)
         reveal_time = dt_aware - timedelta(minutes=int(hide_mins))
         now = datetime.now(ireland_tz)
-        return now < reveal_time
+        if now < reveal_time:
+            return True, reveal_time
+        return False, None
     except Exception:
-        return False
+        return False, None
 
 def get_comp_display_name(c):
-    """Creates a clean display name including the round for dropdowns."""
     r = f" - {c['round']}" if c.get('round') else ""
     return f"{c['category']} {c['comp_name']}{r}"
 
 def generate_comp_id(comp):
-    """Creates a URL-safe unique ID with underscores."""
     base = f"{comp['category']}_{comp['comp_name']}"
     if comp.get('round'):
         base += f"_{comp['round']}"
@@ -105,21 +105,28 @@ def generate_comp_id(comp):
 def generate_scoreboard_html(lb_score, opp_score, opp_team_name):
     return f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto;'><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>L&B</div><div style='background-color: {LB_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{lb_score}</div></div><div style='flex: 1; text-align: center; font-size: 35px; font-weight: bold; padding-top: 25px;'>:</div><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>{opp_team_name}</div><div style='background-color: {OPP_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{opp_score}</div></div></div>"
 
-def generate_pairing_html(p, view_mode="public", hide_names=False):
-    lb_name_display = "TBD" if hide_names else p.get('landb_player', 'TBD')
-    opp_name_display = "TBD" if hide_names else p.get('opposition_player', 'TBD')
+def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=None):
+    if hide_names and reveal_time:
+        lb_name_display = f"Reveals {reveal_time.strftime('%H:%M')}"
+        opp_name_display = "TBD"
+    else:
+        lb_name_display = p.get('landb_player', 'TBD')
+        opp_name_display = p.get('opposition_player', 'TBD')
+
+    is_started = p['status'] in ["LIVE", "FINISHED"]
+    tied_text = "&nbsp;" if is_started else "ALL SQUARE"
 
     if p['leader'] == 'L&B':
         lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{p['score']}</div>"
     elif p['leader'] == 'Tied':
-        lb_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>ALL SQUARE</div>"
+        lb_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{tied_text}</div>"
     else:
         lb_score_html = f"<div style='padding: 4px; visibility: hidden;'>Spacer</div>"
         
     if p['leader'] == 'Opposition':
         opp_score_html = f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{p['score'].replace('Down', 'Up')}</div>"
     elif p['leader'] == 'Tied':
-        opp_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>ALL SQUARE</div>"
+        opp_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{tied_text}</div>"
     else:
         opp_score_html = f"<div style='padding: 4px; visibility: hidden;'>Spacer</div>"
         
@@ -161,36 +168,60 @@ if role == "public":
     st.markdown(f"<div style='text-align: center;'>{logo_html}<h2 style='font-weight: 700; margin-top: 0px;'>L&B Match Centre</h2></div>", unsafe_allow_html=True)
     st.divider()
     
-    if not comps:
-        st.info("No active competitions.")
-        st.stop()
-        
-    if st.button("↻ Refresh Scores", use_container_width=True): 
-        fetch_all.clear()
-        st.rerun()
+    active_comps = [c for c in comps if not c.get('archived', False)]
     
-    for comp in comps:
-        comp_pairings = [p for p in pairings if p["competition_id"] == comp["id"]]
-        comp_pairings = sorted(comp_pairings, key=lambda x: x['id'])
+    if active_comps:
+        if st.button("↻ Refresh Scores", use_container_width=True): 
+            fetch_all.clear()
+            st.rerun()
+            
+        years = sorted(list(set([datetime.strptime(c['match_date'], "%Y-%m-%d").year for c in active_comps if c.get('match_date')])), reverse=True)
+        if not years: years = [datetime.now(ireland_tz).year]
         
-        lb, opp = calculate_overall_score(comp_pairings)
-        status = get_comp_status(comp_pairings)
-        hide_names = should_hide_names(comp)
-        
-        full_title = get_comp_display_name(comp)
-        
-        st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>{full_title}</h3>", unsafe_allow_html=True)
-        st.markdown(f"<div style='text-align: center;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
-        
-        st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team']), unsafe_allow_html=True)
-        
-        with st.expander(f"View Pairings (Last updated: {datetime.now(ireland_tz).strftime('%H:%M')})"):
-            if not comp_pairings:
-                st.write("Pairings to be announced.")
-            for p in comp_pairings:
-                st.markdown(generate_pairing_html(p, "public", hide_names), unsafe_allow_html=True)
-                st.write("---")
-        st.divider()
+        c_yr, c_cat = st.columns([1, 3])
+        with c_yr:
+            sel_year = st.selectbox("Year", years)
+        with c_cat:
+            filter_cat = st.radio("Category", ["All"] + CATEGORY_OPTIONS, horizontal=True)
+            
+        filtered_comps = []
+        for c in active_comps:
+            try: c_year = datetime.strptime(c['match_date'], "%Y-%m-%d").year
+            except: c_year = datetime.now(ireland_tz).year
+            
+            if c_year == sel_year and (filter_cat == "All" or c['category'] == filter_cat):
+                filtered_comps.append(c)
+                
+        if not filtered_comps:
+            st.info("No competitions match your filters.")
+            
+        for comp in filtered_comps:
+            comp_pairings = [p for p in pairings if p["competition_id"] == comp["id"]]
+            comp_pairings = sorted(comp_pairings, key=lambda x: x['id'])
+            
+            lb, opp = calculate_overall_score(comp_pairings)
+            status = get_comp_status(comp_pairings)
+            hide_names, reveal_time = should_hide_names(comp)
+            
+            try: display_date = datetime.strptime(comp['match_date'], "%Y-%m-%d").strftime("%d - %m - %Y")
+            except: display_date = comp.get('match_date', '')
+            
+            full_title = f"{get_comp_display_name(comp)} <br><span style='font-size: 14px; color: gray;'>{display_date}</span>"
+            
+            st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-bottom: 2px;'>{full_title}</h3>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
+            
+            st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team']), unsafe_allow_html=True)
+            
+            with st.expander(f"View Pairings (Last updated: {datetime.now(ireland_tz).strftime('%H:%M')})"):
+                if not comp_pairings:
+                    st.write("Pairings to be announced.")
+                for p in comp_pairings:
+                    st.markdown(generate_pairing_html(p, "public", hide_names, reveal_time), unsafe_allow_html=True)
+                    st.write("---")
+            st.divider()
+    else:
+        st.info("No active competitions.")
 
 # --- VIEW 2: MANAGER PORTAL ---
 elif role == "manager":
@@ -213,7 +244,6 @@ elif role == "manager":
             st.info("No matches added to this competition yet.")
             
         for p in comp_pairings:
-            # Managers always see the real names, never hidden
             st.markdown(generate_pairing_html(p, "manager", hide_names=False), unsafe_allow_html=True)
             
             with st.expander(f"Update: {p['landb_player']} vs {p['opposition_player']}", expanded=False):
@@ -270,10 +300,9 @@ elif role == "admin":
                 new_round = col4.text_input("Round (e.g., Semi-Final)")
                 
                 col5, col6 = st.columns(2)
-                new_date = col5.date_input("Match Date")
+                new_date = col5.date_input("Match Date", format="DD/MM/YYYY")
                 new_start_time = col6.time_input("Start Time (Optional)", value=None)
                 
-                # Defaults to 60 as requested
                 new_hide_mins = st.number_input("Hide Player Names Until (Mins before start)", min_value=0, value=60, step=15)
                 
                 if st.form_submit_button("Create Competition"):
@@ -288,7 +317,8 @@ elif role == "admin":
                             "round": round_val,
                             "match_date": str(new_date),
                             "start_time": time_string,
-                            "hide_mins": new_hide_mins
+                            "hide_mins": new_hide_mins,
+                            "archived": False
                         }).execute()
                         
                         fetch_all.clear() 
@@ -300,31 +330,37 @@ elif role == "admin":
         with tab2:
             st.subheader("Add Match to Competition")
             if comps:
-                with st.form("create_pairing_form", clear_on_submit=True):
-                    comp_names_dict = {get_comp_display_name(c): c['id'] for c in comps}
-                    target_comp_title = st.selectbox("Select Competition", list(comp_names_dict.keys()))
+                filter_cat_add = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_add_match")
+                filtered_comps_add = [c for c in comps if filter_cat_add == "All" or c['category'] == filter_cat_add]
+                
+                if filtered_comps_add:
+                    comp_names_dict_add = {get_comp_display_name(c): c['id'] for c in filtered_comps_add}
+                    target_comp_title = st.selectbox("Select Competition", list(comp_names_dict_add.keys()), key="add_match_sel")
                     
-                    target_comp_data = next((c for c in comps if get_comp_display_name(c) == target_comp_title), None)
+                    target_comp_data = next((c for c in filtered_comps_add if get_comp_display_name(c) == target_comp_title), None)
                     default_opp_name = target_comp_data["opposition_team"] if target_comp_data else ""
                     
-                    col1, col2 = st.columns(2)
-                    lb_player_input = col1.text_input("L&B Player Name")
-                    opp_player_input = col2.text_input("Opposition Player Name", value=default_opp_name)
-                    match_venue = st.selectbox("Venue", VENUE_OPTIONS)
-                    
-                    if st.form_submit_button("Add Match Pairing"):
-                        if lb_player_input and opp_player_input:
-                            supabase.table('pairings').insert({
-                                "competition_id": comp_names_dict[target_comp_title],
-                                "landb_player": lb_player_input, "opposition_player": opp_player_input,
-                                "venue": match_venue, "hole": "1", "score": "All Square",
-                                "status": "Not Started", "leader": "Tied"
-                            }).execute()
-                            
-                            fetch_all.clear()
-                            st.success("Match added!"); time.sleep(1.5); st.rerun()
-                        else:
-                            st.error("Please enter both player names.")
+                    with st.form("create_pairing_form", clear_on_submit=True):
+                        col1, col2 = st.columns(2)
+                        lb_player_input = col1.text_input("L&B Player Name")
+                        opp_player_input = col2.text_input("Opposition Player Name", value=default_opp_name)
+                        match_venue = st.selectbox("Venue", VENUE_OPTIONS)
+                        
+                        if st.form_submit_button("Add Match Pairing"):
+                            if lb_player_input and opp_player_input:
+                                supabase.table('pairings').insert({
+                                    "competition_id": comp_names_dict_add[target_comp_title],
+                                    "landb_player": lb_player_input, "opposition_player": opp_player_input,
+                                    "venue": match_venue, "hole": "1", "score": "All Square",
+                                    "status": "Not Started", "leader": "Tied"
+                                }).execute()
+                                
+                                fetch_all.clear()
+                                st.success("Match added!"); time.sleep(1.5); st.rerun()
+                            else:
+                                st.error("Please enter both player names.")
+                else:
+                    st.info(f"No {filter_cat_add} competitions found.")
                             
         # TAB 3: EDIT COMP
         with tab3:
@@ -335,7 +371,7 @@ elif role == "admin":
                 
                 if filtered_comps:
                     comp_names_dict = {get_comp_display_name(c): c for c in filtered_comps}
-                    edit_comp_name = st.selectbox("Select Competition", list(comp_names_dict.keys()))
+                    edit_comp_name = st.selectbox("Select Competition", list(comp_names_dict.keys()), key="edit_comp_sel")
                     c_data = comp_names_dict[edit_comp_name]
                     
                     with st.form("edit_comp_form"):
@@ -348,19 +384,17 @@ elif role == "admin":
                         e_round = e_c4.text_input("Round", value=c_data.get('round', ''))
                         
                         e_c5, e_c6 = st.columns(2)
-                        try:
-                            parsed_date = datetime.strptime(c_data['match_date'], "%Y-%m-%d").date() if c_data.get('match_date') else datetime.now(ireland_tz).date()
-                        except:
-                            parsed_date = datetime.now(ireland_tz).date()
+                        try: parsed_date = datetime.strptime(c_data['match_date'], "%Y-%m-%d").date() if c_data.get('match_date') else datetime.now(ireland_tz).date()
+                        except: parsed_date = datetime.now(ireland_tz).date()
                             
-                        e_date = e_c5.date_input("Match Date", value=parsed_date)
+                        e_date = e_c5.date_input("Match Date", value=parsed_date, format="DD/MM/YYYY")
                         parsed_time = safe_time_parse(c_data.get('start_time', ''))
                         e_time = e_c6.time_input("Start Time", value=parsed_time)
                         
-                        # Preserve existing value or default to 60 if null
                         hide_val = c_data.get('hide_mins')
                         hide_val = int(hide_val) if hide_val is not None else 60
                         e_hide_mins = st.number_input("Hide Player Names Until (Mins before)", min_value=0, value=hide_val, step=15)
+                        e_archived = st.checkbox("Archive Competition (Hide from Public)", value=c_data.get('archived', False))
                         
                         if st.form_submit_button("Update Competition"):
                             updated_time_str = e_time.strftime("%H:%M") if e_time else None
@@ -370,7 +404,7 @@ elif role == "admin":
                                 supabase.table('competitions').update({
                                     "comp_name": e_name, "category": e_cat, "opposition_team": e_opp, 
                                     "round": updated_round_str, "match_date": str(e_date), "start_time": updated_time_str,
-                                    "hide_mins": e_hide_mins
+                                    "hide_mins": e_hide_mins, "archived": e_archived
                                 }).eq('id', c_data['id']).execute()
                                 
                                 fetch_all.clear()
