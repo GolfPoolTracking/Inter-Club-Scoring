@@ -25,11 +25,12 @@ footer {visibility: hidden;}
 # L&B Palette
 LB_COLOR, OPP_COLOR, TIE_COLOR = "#0D4722", "#4A5568", "#A0AEC0"
 ireland_tz = ZoneInfo("Europe/Dublin")
+BASE_URL = "https://landb-inter-club-scoring.streamlit.app"
 
 @st.cache_resource
 def init_connection():
     url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"] # Recommend using the Service Role Key here to bypass RLS safely
+    key = st.secrets["SUPABASE_KEY"] 
     return create_client(url, key)
 
 supabase = init_connection()
@@ -62,7 +63,6 @@ def calculate_overall_score(pairings):
     return lb, opp
 
 def format_score(score):
-    # Drop the decimal if it's a whole number (e.g., 3.0 -> 3, but 2.5 remains 2.5)
     return int(score) if score % 1 == 0 else score
 
 def safe_index(lst, val): return lst.index(val) if val in lst else 0
@@ -73,7 +73,7 @@ def should_reveal_names(comp):
     time_str = comp.get('start_time')
     
     if not date_str or not time_str:
-        return True # Default to reveal if no time is set
+        return True 
         
     try:
         dt_str = f"{date_str} {time_str}"
@@ -82,7 +82,12 @@ def should_reveal_names(comp):
         diff = comp_dt - now
         return diff.total_seconds() <= (reveal_mins * 60)
     except Exception:
-        return True # Fallback
+        return True 
+
+def generate_url_safe_comp_name(comp):
+    # Combines elements and replaces spaces with underscores
+    raw_name = f"{comp['category']}_{comp['comp_name']}_{comp.get('round', 'Round 1')}"
+    return raw_name.replace(" ", "_")
 
 # --- FLATTENED HTML GENERATORS ---
 def generate_scoreboard_html(lb_score, opp_score, opp_team_name):
@@ -175,10 +180,12 @@ if role == "public":
 elif role == "manager":
     selected_comp_name = urllib.parse.unquote(query_params.get("comp", ""))
     
-    comp = next((c for c in comps if f"{c['category']} {c['comp_name']} - {c.get('round', 'Round 1')}" == selected_comp_name), None)
+    # Match the decoded URL string to the underscore-formatted competition name
+    comp = next((c for c in comps if generate_url_safe_comp_name(c) == selected_comp_name), None)
     
     if comp:
-        st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>Manage: {selected_comp_name}</h3>", unsafe_allow_html=True)
+        display_name = f"{comp['category']} {comp['comp_name']} - {comp.get('round', 'Round 1')}"
+        st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>Manage: {display_name}</h3>", unsafe_allow_html=True)
         comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], key=lambda x: x['id'])
         
         lb, opp = calculate_overall_score(comp_pairings)
@@ -217,14 +224,18 @@ elif role == "admin":
 
     if not st.session_state.admin_auth:
         st.markdown("<h2 style='text-align: center;'>Admin Login</h2>", unsafe_allow_html=True)
-        pwd = st.text_input("Enter Admin Password", type="password")
-        if st.button("Login", use_container_width=True):
-            correct_password = st.secrets.get("ADMIN_PASSWORD", "landb1909")
-            if pwd == correct_password:
-                st.session_state.admin_auth = True
-                st.rerun()
-            else:
-                st.error("Incorrect password")
+        # Use a form to capture the "Enter" key and handle errors correctly
+        with st.form("login_form"):
+            pwd = st.text_input("Enter Admin Password", type="password")
+            submitted = st.form_submit_button("Login", use_container_width=True)
+            
+            if submitted:
+                correct_password = st.secrets.get("ADMIN_PASSWORD", "landb1909")
+                if pwd == correct_password:
+                    st.session_state.admin_auth = True
+                    st.rerun()
+                else:
+                    st.error("🚨 Incorrect password. Access denied.")
     else:
         st.header("Admin Console")
         if st.button("Logout of Admin"):
@@ -347,11 +358,12 @@ elif role == "admin":
             st.write("Save these links or send them to your team managers.")
             
             st.markdown("**Admin Console Link** (Password Required):")
-            st.code("/?role=admin", language="text")
+            st.code(f"{BASE_URL}/?role=admin", language="text")
             
             st.divider()
             st.markdown("**Manager Portal Links** (Locks user to specific competition):")
             for c in comps:
-                safe_comp_name = urllib.parse.quote(f"{c['category']} {c['comp_name']} - {c.get('round', 'Round 1')}")
+                # Use the new helper to create the underscore version of the name
+                safe_comp_name = urllib.parse.quote(generate_url_safe_comp_name(c))
                 st.markdown(f"**{c['category']} {c['comp_name']} - {c.get('round', 'Round 1')}**")
-                st.code(f"/?role=manager&comp={safe_comp_name}", language="text")
+                st.code(f"{BASE_URL}/?role=manager&comp={safe_comp_name}", language="text")
