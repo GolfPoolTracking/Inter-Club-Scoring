@@ -313,6 +313,7 @@ elif role == "admin":
                 
                 if st.form_submit_button("Create Competition"):
                     if new_comp_name and new_opp_team:
+                        secure_access_code = generate_random_code()
                         time_string = new_start_time.strftime("%H:%M") if new_start_time else None
                         round_val = new_round if new_round.strip() else None
                         
@@ -324,7 +325,7 @@ elif role == "admin":
                             "match_date": str(new_date),
                             "start_time": time_string,
                             "hide_mins": new_hide_mins,
-                            "archived": False
+                            "archived": False,
                             "access_code": secure_access_code  # Save this to Supabase
                         }).execute()
                         
