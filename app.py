@@ -328,7 +328,7 @@ elif role == "admin":
                         
                                   
         # TAB 2: EDIT COMP
-        with tab3:
+        with tab2:
             st.subheader("Edit/Delete Competition")
             if comps:
                 filter_cat = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_edit_comp")
@@ -386,7 +386,7 @@ elif role == "admin":
                     
 
         # TAB 3: ADD MATCH
-        with tab2:
+        with tab3:
             st.subheader("Add Match to Competition")
             if comps:
                 filter_cat_add = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_add_match")
