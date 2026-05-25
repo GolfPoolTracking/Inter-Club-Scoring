@@ -173,7 +173,7 @@ def fetch_all():
         try:
             masters = supabase.table("competitions_master").select("*").execute().data
         except Exception:
-            masters = [] # Fallback if table isn't created yet
+            masters = []
         return comps, pairings, masters
     except:
         return [], [], []
@@ -307,18 +307,18 @@ elif role == "admin":
     if not st.session_state.admin_auth:
         st.markdown("<h2 style='text-align: center;'>Admin Login</h2>", unsafe_allow_html=True)
         
-        # Use a form to capture "Enter" key presses
         with st.form("admin_login_form"):
             pwd = st.text_input("Enter Admin Password", type="password")
             submit_button = st.form_submit_button("Login", use_container_width=True)
             
             if submit_button:
-                correct_password = st.secrets.get("ADMIN_PASSWORD")
-                if pwd == correct_password:
+                # Fallback to empty string to prevent crashes if secret is missing
+                correct_password = st.secrets.get("ADMIN_PASSWORD", "")
+                if pwd == correct_password and pwd != "":
                     st.session_state.admin_auth = True
                     st.rerun()
                 else:
-                    st.error("Incorrect password")
+                    st.error("Incorrect password or ADMIN_PASSWORD secret not set.")
     else:
         st.header("Admin Console")
         if st.button("Logout of Admin"):
@@ -330,7 +330,6 @@ elif role == "admin":
         # TAB 1: CREATE COMPETITION
         with tab1:
             st.subheader("Create New Competition")
-            
             if masters:
                 master_opts = {f"{m['category']} - {m['comp_name']}": m for m in masters}
                 selected_master = st.selectbox("Select from Master List", list(master_opts.keys()))
@@ -338,7 +337,8 @@ elif role == "admin":
                 
                 with st.form("create_comp_form", clear_on_submit=True):
                     col1, col2 = st.columns(2)
-                    new_opp_team = col1.text_input("Opposition Team", value=m_data.get('default_opposition', ''))
+                    # Opposition team is manually entered since it's no longer in the master table
+                    new_opp_team = col1.text_input("Opposition Team")
                     new_round = col2.text_input("Round (e.g., Semi-Final)")
                     
                     col3, col4 = st.columns(2)
@@ -366,7 +366,7 @@ elif role == "admin":
                                 "start_time": time_string,
                                 "hide_mins": new_hide_mins,
                                 "archived": False,
-                                "access_code": secure_access_code
+                                "access_code": secure_access_code  
                             }).execute()
                             
                             fetch_all.clear() 
@@ -571,13 +571,15 @@ elif role == "admin":
                 with st.form("add_master_form"):
                     m_name = st.text_input("Competition Name (e.g., Barton Shield)")
                     m_cat = st.selectbox("Category", CATEGORY_OPTIONS)
-                    m_opp = st.text_input("Default Opposition (Optional)")
                     if st.form_submit_button("Add to Master"):
-                        supabase.table("competitions_master").insert({
-                            "comp_name": m_name, "category": m_cat, "default_opposition": m_opp
-                        }).execute()
-                        fetch_all.clear()
-                        st.success(f"Added {m_name} to Master List!"); time.sleep(1.5); st.rerun()
+                        if m_name:
+                            supabase.table("competitions_master").insert({
+                                "comp_name": m_name, "category": m_cat
+                            }).execute()
+                            fetch_all.clear()
+                            st.success(f"Added {m_name} to Master List!"); time.sleep(1.5); st.rerun()
+                        else:
+                            st.error("Competition Name is required.")
 
             elif m_action == "Edit/Delete Master":
                 if masters:
@@ -588,10 +590,9 @@ elif role == "admin":
                     with st.form("edit_master_form"):
                         e_name = st.text_input("Name", value=m_data['comp_name'])
                         e_cat = st.selectbox("Category", CATEGORY_OPTIONS, index=safe_index(CATEGORY_OPTIONS, m_data['category']))
-                        e_opp = st.text_input("Default Opposition", value=m_data.get('default_opposition', ''))
                         if st.form_submit_button("Update Master Template"):
                             supabase.table("competitions_master").update({
-                                "comp_name": e_name, "category": e_cat, "default_opposition": e_opp
+                                "comp_name": e_name, "category": e_cat
                             }).eq("id", m_data['id']).execute()
                             fetch_all.clear()
                             st.success("Updated Template!"); time.sleep(1.5); st.rerun()
