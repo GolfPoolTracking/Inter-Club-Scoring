@@ -163,7 +163,7 @@ HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in rang
 SCORE_OPTIONS = [f"{i} Up" for i in range(10, 0, -1)] + ["All Square"] + [f"{i} Down" for i in range(1, 11)]
 VENUE_OPTIONS = ["Home", "Away"]
 CATEGORY_OPTIONS = ["Mens", "Womens", "Boys", "Mixed"]
-ROUND_OPTIONS = ["Not Applicable", "Round 1", "Round 2", "Round 3", "Round 4", "Quarter-Final", "Semi-Final", "Final"]
+ROUND_OPTIONS = ["Round 1", "Round 2", "Round 3", "Round 4", "Quarter-Final", "Semi-Final", "Final"]
 
 # --- DATA FETCHING ---
 @st.cache_data(ttl=10)
