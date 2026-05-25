@@ -313,7 +313,7 @@ elif role == "admin":
             
             if submit_button:
                 # Fallback to empty string to prevent crashes if secret is missing
-                correct_password = st.secrets.get("ADMIN_PASSWORD", "")
+                correct_password = st.secrets.get("ADMIN_PASSWORD")
                 if pwd == correct_password and pwd != "":
                     st.session_state.admin_auth = True
                     st.rerun()
