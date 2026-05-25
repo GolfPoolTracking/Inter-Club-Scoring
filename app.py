@@ -88,6 +88,7 @@ def format_date_display(date_string):
     if not date_string or date_string == 'TBD': 
         return 'TBD'
     try:
+        # Assumes date_string is stored as YYYY-MM-DD in the database
         return datetime.strptime(date_string, "%Y-%m-%d").strftime("%d-%m-%Y")
     except ValueError:
         return date_string
@@ -169,11 +170,15 @@ def fetch_all():
     try:
         comps = supabase.table("competitions").select("*").execute().data
         pairings = supabase.table("pairings").select("*").execute().data
-        return comps, pairings
+        try:
+            masters = supabase.table("competitions_master").select("*").execute().data
+        except Exception:
+            masters = [] # Fallback if table isn't created yet
+        return comps, pairings, masters
     except:
-        return [], []
+        return [], [], []
 
-comps, pairings = fetch_all()
+comps, pairings, masters = fetch_all()
 
 # --- SECURE URL ROUTING ---
 query_params = st.query_params
@@ -289,7 +294,7 @@ elif role == "manager":
                         "hole": h, "score": sc, "status": "FINISHED" if fin else "LIVE", "leader": new_leader
                     }).eq("id", p['id']).execute()
                     fetch_all.clear() 
-                    st.success("Updated!"); time.sleep(2); st.rerun()
+                    st.success("Updated!"); time.sleep(1.5); st.rerun()
             st.divider()
     else:
         st.error("Invalid Manager Link. Competition not found or access code is incorrect.")
@@ -308,7 +313,7 @@ elif role == "admin":
             submit_button = st.form_submit_button("Login", use_container_width=True)
             
             if submit_button:
-                correct_password = st.secrets.get("ADMIN_PASSWORD", "landb1909")
+                correct_password = st.secrets.get("ADMIN_PASSWORD")
                 if pwd == correct_password:
                     st.session_state.admin_auth = True
                     st.rerun()
@@ -320,53 +325,56 @@ elif role == "admin":
             st.session_state.admin_auth = False
             st.rerun()
             
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Create Comp", "Edit Comp", "Add Match", "Edit Match", "Access Links"])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Create Comp", "Edit Comp", "Add Match", "Edit Match", "Access Links", "Master List"])
         
         # TAB 1: CREATE COMPETITION
         with tab1:
             st.subheader("Create New Competition")
-            with st.form("create_comp_form", clear_on_submit=True):
-                col1, col2 = st.columns(2)
-                new_category = col1.selectbox("Category", CATEGORY_OPTIONS)
-                new_comp_name = col2.text_input("Competition Name (e.g., Barton Shield)")
+            
+            if masters:
+                master_opts = {f"{m['category']} - {m['comp_name']}": m for m in masters}
+                selected_master = st.selectbox("Select from Master List", list(master_opts.keys()))
+                m_data = master_opts[selected_master]
                 
-                col3, col4 = st.columns(2)
-                new_opp_team = col3.text_input("Opposition Team")
-                new_round = col4.text_input("Round (e.g., Semi-Final)")
-                
-                col5, col6 = st.columns(2)
-                new_date = col5.date_input("Match Date", format="DD/MM/YYYY")
-                new_start_time = col6.time_input("Start Time (Optional)", value=None)
-                
-                new_hide_mins = st.number_input("Hide Player Names Until (Mins before start)", min_value=0, value=60, step=15)
-                
-                if st.form_submit_button("Create Competition"):
-                    if new_comp_name and new_opp_team:
-                        secure_access_code = generate_random_code()
-                        time_string = new_start_time.strftime("%H:%M") if new_start_time else None
-                        round_val = new_round if new_round.strip() else None
-                        
-                        # EXTRACT YEAR
-                        match_year = new_date.year
+                with st.form("create_comp_form", clear_on_submit=True):
+                    col1, col2 = st.columns(2)
+                    new_opp_team = col1.text_input("Opposition Team", value=m_data.get('default_opposition', ''))
+                    new_round = col2.text_input("Round (e.g., Semi-Final)")
+                    
+                    col3, col4 = st.columns(2)
+                    new_date = col3.date_input("Match Date", format="DD/MM/YYYY")
+                    new_start_time = col4.time_input("Start Time (Optional)", value=None)
+                    
+                    new_hide_mins = st.number_input("Hide Player Names Until (Mins before start)", min_value=0, value=60, step=15)
+                    
+                    if st.form_submit_button("Create Competition"):
+                        if new_opp_team:
+                            secure_access_code = generate_random_code()
+                            time_string = new_start_time.strftime("%H:%M") if new_start_time else None
+                            round_val = new_round if new_round.strip() else None
+                            
+                            # EXTRACT YEAR
+                            match_year = new_date.year
 
-                        supabase.table('competitions').insert({
-                            "comp_name": new_comp_name, 
-                            "category": new_category,
-                            "opposition_team": new_opp_team, 
-                            "round": round_val,
-                            "match_date": str(new_date), # Keeping YYYY-MM-DD for database storage
-                            "year": match_year,
-                            "start_time": time_string,
-                            "hide_mins": new_hide_mins,
-                            "archived": False,
-                            "access_code": secure_access_code  # Save this to Supabase
-                        }).execute()
-                        
-                        fetch_all.clear() 
-                        st.success(f"Created {new_category} {new_comp_name}!"); time.sleep(2); st.rerun()
-                    else:
-                        st.error("Please fill out Name and Opposition.")
-                        
+                            supabase.table('competitions').insert({
+                                "comp_name": m_data['comp_name'], 
+                                "category": m_data['category'],
+                                "opposition_team": new_opp_team, 
+                                "round": round_val,
+                                "match_date": str(new_date),
+                                "year": match_year,
+                                "start_time": time_string,
+                                "hide_mins": new_hide_mins,
+                                "archived": False,
+                                "access_code": secure_access_code
+                            }).execute()
+                            
+                            fetch_all.clear() 
+                            st.success(f"Created {m_data['category']} {m_data['comp_name']}!"); time.sleep(3); st.rerun()
+                        else:
+                            st.error("Please fill out the Opposition Team.")
+            else:
+                st.info("No master competitions found. Please add them in the 'Master List' tab first.")
                                   
         # TAB 2: EDIT COMP
         with tab2:
@@ -417,7 +425,7 @@ elif role == "admin":
                                 }).eq('id', c_data['id']).execute()
                                 
                                 fetch_all.clear()
-                                st.success("Updated!"); time.sleep(2); st.rerun()
+                                st.success("Updated!"); time.sleep(3); st.rerun()
                             except Exception as e:
                                 st.error(f"Database Error: {e}")
                                 
@@ -427,7 +435,7 @@ elif role == "admin":
                             supabase.table('competitions').delete().eq('id', c_data['id']).execute()
                             fetch_all.clear()
                             st.success("Deleted.")
-                            time.sleep(2)
+                            time.sleep(3)
                             st.rerun()
                 else:
                     st.info(f"No {filter_cat} competitions found.")
@@ -470,11 +478,11 @@ elif role == "admin":
                                 }).execute()
                                 
                                 fetch_all.clear()
-                                st.success("Match added!"); time.sleep(2); st.rerun()
+                                st.success("Match added!"); time.sleep(1.5); st.rerun()
                             else:
                                 st.error("Please enter both player names.") 
         
-# --- TAB 4: EDIT MATCH ---
+        # TAB 4: EDIT MATCH
         with tab4:
             st.subheader("Edit/Delete Match")
             if comps:
@@ -511,7 +519,7 @@ elif role == "admin":
                                 }).eq('id', p_data['id']).execute()
                                 
                                 fetch_all.clear() 
-                                st.success("Updated!"); time.sleep(2); st.rerun()
+                                st.success("Updated!"); time.sleep(1.5); st.rerun()
                         
                         # Confirmation popover before deleting a match
                         with st.popover("🚨 Delete Match 🚨", key=f"del_match_{p_data['id']}", use_container_width=True):
@@ -520,14 +528,14 @@ elif role == "admin":
                                 supabase.table('pairings').delete().eq('id', p_data['id']).execute()
                                 fetch_all.clear()
                                 st.success("Deleted.")
-                                time.sleep(2)
+                                time.sleep(1.5)
                                 st.rerun()
                     else:
                         st.info("No matches in this competition.")
                 else:
                     st.info(f"No {filter_cat_m} competitions found.")
                     
-                # TAB 5: ACCESS LINKS
+        # TAB 5: ACCESS LINKS
         with tab5:
             st.subheader("System Access Links")
             st.write("Save these links or send them to your team managers.")
@@ -553,3 +561,48 @@ elif role == "admin":
                     st.code(f"{APP_BASE_URL}/?role=manager&comp={secure_comp_id}", language="text")
             else:
                 st.info(f"No {filter_cat_links} competitions found.")
+
+        # TAB 6: MASTER LIST MANAGEMENT
+        with tab6:
+            st.subheader("Manage Master Competition List")
+            m_action = st.radio("Action", ["Add to Master", "Edit/Delete Master"], horizontal=True)
+            
+            if m_action == "Add to Master":
+                with st.form("add_master_form"):
+                    m_name = st.text_input("Competition Name (e.g., Barton Shield)")
+                    m_cat = st.selectbox("Category", CATEGORY_OPTIONS)
+                    m_opp = st.text_input("Default Opposition (Optional)")
+                    if st.form_submit_button("Add to Master"):
+                        supabase.table("competitions_master").insert({
+                            "comp_name": m_name, "category": m_cat, "default_opposition": m_opp
+                        }).execute()
+                        fetch_all.clear()
+                        st.success(f"Added {m_name} to Master List!"); time.sleep(1.5); st.rerun()
+
+            elif m_action == "Edit/Delete Master":
+                if masters:
+                    m_opts = {f"{m['category']} - {m['comp_name']}": m for m in masters}
+                    sel_m = st.selectbox("Select Master Template to Edit", list(m_opts.keys()))
+                    m_data = m_opts[sel_m]
+                    
+                    with st.form("edit_master_form"):
+                        e_name = st.text_input("Name", value=m_data['comp_name'])
+                        e_cat = st.selectbox("Category", CATEGORY_OPTIONS, index=safe_index(CATEGORY_OPTIONS, m_data['category']))
+                        e_opp = st.text_input("Default Opposition", value=m_data.get('default_opposition', ''))
+                        if st.form_submit_button("Update Master Template"):
+                            supabase.table("competitions_master").update({
+                                "comp_name": e_name, "category": e_cat, "default_opposition": e_opp
+                            }).eq("id", m_data['id']).execute()
+                            fetch_all.clear()
+                            st.success("Updated Template!"); time.sleep(1.5); st.rerun()
+                    
+                    with st.popover(f"🚨 Delete {m_data['comp_name']} 🚨", use_container_width=True):
+                        st.warning(f"Confirm deletion of {m_data['comp_name']} from Master List?")
+                        if st.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary"):
+                            supabase.table("competitions_master").delete().eq("id", m_data['id']).execute()
+                            fetch_all.clear()
+                            st.success("Deleted from Master List.")
+                            time.sleep(1.5)
+                            st.rerun()
+                else:
+                    st.info("No master competitions found to edit.")
