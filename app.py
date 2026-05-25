@@ -6,6 +6,12 @@ import time
 from supabase import create_client
 import urllib.parse
 import base64
+import random
+import string
+
+# --- Random code generator for unique keys ---
+def generate_random_code(length=6):
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
@@ -319,6 +325,7 @@ elif role == "admin":
                             "start_time": time_string,
                             "hide_mins": new_hide_mins,
                             "archived": False
+                            "access_code": secure_access_code  # Save this to Supabase
                         }).execute()
                         
                         fetch_all.clear() 
@@ -488,9 +495,12 @@ elif role == "admin":
             if filtered_comps_links:
                 for c in filtered_comps_links:
                     comp_id = generate_comp_id(c)
+                    # Append the access code to the existing ID
+                    secure_comp_id = f"{comp_id}_{c.get('access_code', '000000')}"
+                    
                     display_title = get_comp_display_name(c)
                     
                     st.markdown(f"**{display_title}**")
-                    st.code(f"{APP_BASE_URL}/?role=manager&comp={comp_id}", language="text")
+                    st.code(f"{APP_BASE_URL}/?role=manager&comp={secure_comp_id}", language="text")
             else:
                 st.info(f"No {filter_cat_links} competitions found.")
