@@ -377,10 +377,15 @@ elif role == "admin":
                             except Exception as e:
                                 st.error(f"Database Error: {e}")
                                 
-                    if st.button(f"🚨 Delete {edit_comp_name} 🚨", type="primary"):
-                        supabase.table('competitions').delete().eq('id', c_data['id']).execute()
-                        fetch_all.clear()
-                        st.success("Deleted."); time.sleep(1.5); st.rerun()
+                    with st.popover(f"🚨 Delete {edit_comp_name} 🚨"):
+                        st.warning(f"Are you sure you want to delete **{edit_comp_name}**? This action cannot be undone.")
+    
+                        if st.button("Confirm Delete", type="primary"):
+                            supabase.table('competitions').delete().eq('id', c_data['id']).execute()
+                            fetch_all.clear()
+                            st.success("Deleted.")
+                            time.sleep(1.5)
+                            st.rerun()()
                 else:
                     st.info(f"No {filter_cat} competitions found.")
                     
