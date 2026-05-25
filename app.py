@@ -285,7 +285,7 @@ elif role == "admin":
             st.session_state.admin_auth = False
             st.rerun()
             
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Create Comp", "Add Match", "Edit Comp", "Edit Match", "Access Links"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Create Comp", "Edit Comp", "Add Match", "Edit Match", "Access Links"])
         
         # TAB 1: CREATE COMPETITION
         with tab1:
@@ -326,43 +326,8 @@ elif role == "admin":
                     else:
                         st.error("Please fill out Name and Opposition.")
                         
-        # TAB 2: ADD MATCH
-        with tab2:
-            st.subheader("Add Match to Competition")
-            if comps:
-                filter_cat_add = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_add_match")
-                filtered_comps_add = [c for c in comps if filter_cat_add == "All" or c['category'] == filter_cat_add]
-                
-                if filtered_comps_add:
-                    comp_names_dict_add = {get_comp_display_name(c): c['id'] for c in filtered_comps_add}
-                    target_comp_title = st.selectbox("Select Competition", list(comp_names_dict_add.keys()), key="add_match_sel")
-                    
-                    target_comp_data = next((c for c in filtered_comps_add if get_comp_display_name(c) == target_comp_title), None)
-                    default_opp_name = target_comp_data["opposition_team"] if target_comp_data else ""
-                    
-                    with st.form("create_pairing_form", clear_on_submit=True):
-                        col1, col2 = st.columns(2)
-                        lb_player_input = col1.text_input("L&B Player Name")
-                        opp_player_input = col2.text_input("Opposition Player Name", value=default_opp_name)
-                        match_venue = st.selectbox("Venue", VENUE_OPTIONS)
-                        
-                        if st.form_submit_button("Add Match Pairing"):
-                            if lb_player_input and opp_player_input:
-                                supabase.table('pairings').insert({
-                                    "competition_id": comp_names_dict_add[target_comp_title],
-                                    "landb_player": lb_player_input, "opposition_player": opp_player_input,
-                                    "venue": match_venue, "hole": "1", "score": "All Square",
-                                    "status": "Not Started", "leader": "Tied"
-                                }).execute()
-                                
-                                fetch_all.clear()
-                                st.success("Match added!"); time.sleep(1.5); st.rerun()
-                            else:
-                                st.error("Please enter both player names.")
-                else:
-                    st.info(f"No {filter_cat_add} competitions found.")
-                            
-        # TAB 3: EDIT COMP
+                                  
+        # TAB 2: EDIT COMP
         with tab3:
             st.subheader("Edit/Delete Competition")
             if comps:
@@ -419,6 +384,43 @@ elif role == "admin":
                 else:
                     st.info(f"No {filter_cat} competitions found.")
                     
+
+        # TAB 3: ADD MATCH
+        with tab2:
+            st.subheader("Add Match to Competition")
+            if comps:
+                filter_cat_add = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_add_match")
+                filtered_comps_add = [c for c in comps if filter_cat_add == "All" or c['category'] == filter_cat_add]
+                
+                if filtered_comps_add:
+                    comp_names_dict_add = {get_comp_display_name(c): c['id'] for c in filtered_comps_add}
+                    target_comp_title = st.selectbox("Select Competition", list(comp_names_dict_add.keys()), key="add_match_sel")
+                    
+                    target_comp_data = next((c for c in filtered_comps_add if get_comp_display_name(c) == target_comp_title), None)
+                    default_opp_name = target_comp_data["opposition_team"] if target_comp_data else ""
+                    
+                    with st.form("create_pairing_form", clear_on_submit=True):
+                        col1, col2 = st.columns(2)
+                        lb_player_input = col1.text_input("L&B Player Name")
+                        opp_player_input = col2.text_input("Opposition Player Name", value=default_opp_name)
+                        match_venue = st.selectbox("Venue", VENUE_OPTIONS)
+                        
+                        if st.form_submit_button("Add Match Pairing"):
+                            if lb_player_input and opp_player_input:
+                                supabase.table('pairings').insert({
+                                    "competition_id": comp_names_dict_add[target_comp_title],
+                                    "landb_player": lb_player_input, "opposition_player": opp_player_input,
+                                    "venue": match_venue, "hole": "1", "score": "All Square",
+                                    "status": "Not Started", "leader": "Tied"
+                                }).execute()
+                                
+                                fetch_all.clear()
+                                st.success("Match added!"); time.sleep(1.5); st.rerun()
+                            else:
+                                st.error("Please enter both player names.")
+                else:
+                    st.info(f"No {filter_cat_add} competitions found.")
+        
         # TAB 4: EDIT MATCH
         with tab4:
             st.subheader("Edit/Delete Match")
