@@ -311,10 +311,7 @@ elif role == "admin":
             pwd = st.text_input("Enter Admin Password", type="password")
             submit_button = st.form_submit_button("Login", use_container_width=True)
             
-            if submit_button:
-                # DEBUGGING: Uncomment the next line to see what Streamlit thinks the password is
-                st.write(f"DEBUG: Secret found: {st.secrets.get('ADMIN_PASSWORD')}")
-                
+            if submit_button:    
                 # Fallback to empty string to prevent crashes if secret is missing
                 correct_password = st.secrets.get("ADMIN_PASSWORD", "")
                 if pwd == correct_password and pwd != "":
