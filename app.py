@@ -111,7 +111,7 @@ def generate_comp_id(comp):
 def generate_scoreboard_html(lb_score, opp_score, opp_team_name):
     return f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto;'><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>L&B</div><div style='background-color: {LB_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{lb_score}</div></div><div style='flex: 1; text-align: center; font-size: 35px; font-weight: bold; padding-top: 25px;'>:</div><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>{opp_team_name}</div><div style='background-color: {OPP_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{opp_score}</div></div></div>"
 
-def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=None):
+def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=None, show_venue=False):
     if hide_names and reveal_time:
         lb_name_display = f"Reveals {reveal_time.strftime('%H:%M')}"
         opp_name_display = "TBD"
@@ -140,8 +140,8 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
     hole_display = f"Hole {hole_val}" if hole_val.isdigit() else hole_val 
     p_status_color = "gray" if p['status'] == "Not Started" else ("darkred" if p['status'] == "FINISHED" else "#8bc34a")
     
-    venue_html = f"<div style='font-size: 11px; color: gray; margin-top: 4px;'>📍 {p.get('venue', 'Unknown')}</div>" if view_mode == "manager" else ""
-    
+    should_show = (view_mode == "manager") or show_venue
+    venue_html = f"<div style='font-size: 11px; color: gray; margin-top: 4px;'>📍 {p.get('venue', 'Unknown')}</div>" if should_show else ""
     return f"<div style='display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 10px;'><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{lb_score_html}<div style='font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;'>{lb_name_display}</div>{venue_html}</div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'><div style='background-color: black; color: white; padding: 2px; font-size: 13px; border-radius: 3px; margin-bottom: 4px;'>{hole_display}</div><div style='background-color: {p_status_color}; color: white; padding: 2px; font-size: 11px; font-weight: bold; border-radius: 3px;'>{p['status']}</div></div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{opp_score_html}<div style='font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;'>{opp_name_display}</div></div></div>"
 
 # --- LIST DEFINITIONS ---
@@ -223,7 +223,7 @@ if role == "public":
                 if not comp_pairings:
                     st.write("Pairings to be announced.")
                 for p in comp_pairings:
-                    st.markdown(generate_pairing_html(p, "public", hide_names, reveal_time), unsafe_allow_html=True)
+                    st.markdown(generate_pairing_html(p, "public", hide_names, reveal_time, show_venue=True), unsafe_allow_html=True)
                     st.write("---")
             st.divider()
     else:
