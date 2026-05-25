@@ -377,15 +377,14 @@ elif role == "admin":
                             except Exception as e:
                                 st.error(f"Database Error: {e}")
                                 
-                    with st.popover(f"🚨 Delete {edit_comp_name} 🚨"):
-                        st.warning(f"Are you sure you want to delete **{edit_comp_name}**? This action cannot be undone.")
-    
-                        if st.button("Confirm Delete", type="primary"):
+                    with st.popover(f"🚨 Delete {edit_comp_name} 🚨", key=f"del_comp_{c_data['id']}"):
+                        st.warning(f"Confirm deletion of {edit_comp_name}?")
+                        if st.button("Yes, Delete", key=f"btn_del_comp_{c_data['id']}", type="primary"):
                             supabase.table('competitions').delete().eq('id', c_data['id']).execute()
                             fetch_all.clear()
                             st.success("Deleted.")
                             time.sleep(1.5)
-                            st.rerun()()
+                            st.rerun()
                 else:
                     st.info(f"No {filter_cat} competitions found.")
                     
@@ -459,10 +458,9 @@ elif role == "admin":
                         
                                 
                         # Confirmation popover before deleting a match
-                        with st.popover("🚨 Delete Match 🚨", use_container_width=True):
-                            st.warning("Are you sure? This action cannot be undone.")
-    
-                            if st.button("Confirm Delete Match", type="primary"):
+                        with st.popover("🚨 Delete Match 🚨", key=f"del_match_{p_data['id']}", use_container_width=True):
+                            st.warning("Confirm deletion of this match?")
+                            if st.button("Yes, Delete", key=f"btn_del_match_{p_data['id']}", type="primary"):
                                 supabase.table('pairings').delete().eq('id', p_data['id']).execute()
                                 fetch_all.clear()
                                 st.success("Deleted.")
