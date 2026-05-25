@@ -75,8 +75,8 @@ def safe_time_parse(time_str):
 
 def should_hide_names(comp):
     """Calculates if the current time is before the reveal window."""
-    hide_mins = comp.get('hide_mins', 0)
-    if not hide_mins or int(hide_mins) <= 0: return False
+    hide_mins = comp.get('hide_mins')
+    if hide_mins is None or int(hide_mins) <= 0: return False
     if not comp.get('match_date') or not comp.get('start_time'): return False
     
     try:
@@ -88,6 +88,18 @@ def should_hide_names(comp):
         return now < reveal_time
     except Exception:
         return False
+
+def get_comp_display_name(c):
+    """Creates a clean display name including the round for dropdowns."""
+    r = f" - {c['round']}" if c.get('round') else ""
+    return f"{c['category']} {c['comp_name']}{r}"
+
+def generate_comp_id(comp):
+    """Creates a URL-safe unique ID with underscores."""
+    base = f"{comp['category']}_{comp['comp_name']}"
+    if comp.get('round'):
+        base += f"_{comp['round']}"
+    return base.replace(" ", "_")
 
 # --- HTML GENERATORS ---
 def generate_scoreboard_html(lb_score, opp_score, opp_team_name):
@@ -165,8 +177,7 @@ if role == "public":
         status = get_comp_status(comp_pairings)
         hide_names = should_hide_names(comp)
         
-        round_text = f" - {comp['round']}" if comp.get('round') else ""
-        full_title = f"{comp['category']} {comp['comp_name']}{round_text}"
+        full_title = get_comp_display_name(comp)
         
         st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>{full_title}</h3>", unsafe_allow_html=True)
         st.markdown(f"<div style='text-align: center;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
@@ -183,11 +194,12 @@ if role == "public":
 
 # --- VIEW 2: MANAGER PORTAL ---
 elif role == "manager":
-    selected_comp_name = urllib.parse.unquote(query_params.get("comp", ""))
-    comp = next((c for c in comps if f"{c['category']} {c['comp_name']}" == selected_comp_name), None)
+    selected_comp_id = query_params.get("comp", "")
+    comp = next((c for c in comps if generate_comp_id(c) == selected_comp_id), None)
     
     if comp:
-        st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>Manage: {selected_comp_name}</h3>", unsafe_allow_html=True)
+        full_title = get_comp_display_name(comp)
+        st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>Manage: {full_title}</h3>", unsafe_allow_html=True)
         comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], key=lambda x: x['id'])
         
         lb, opp = calculate_overall_score(comp_pairings)
@@ -201,6 +213,7 @@ elif role == "manager":
             st.info("No matches added to this competition yet.")
             
         for p in comp_pairings:
+            # Managers always see the real names, never hidden
             st.markdown(generate_pairing_html(p, "manager", hide_names=False), unsafe_allow_html=True)
             
             with st.expander(f"Update: {p['landb_player']} vs {p['opposition_player']}", expanded=False):
@@ -215,7 +228,7 @@ elif role == "manager":
                         "hole": h, "score": sc, "status": "FINISHED" if fin else "LIVE", "leader": new_leader
                     }).eq("id", p['id']).execute()
                     
-                    fetch_all.clear()
+                    fetch_all.clear() 
                     st.success("Updated!"); time.sleep(1.5); st.rerun()
             st.divider()
     else:
@@ -250,7 +263,7 @@ elif role == "admin":
             with st.form("create_comp_form", clear_on_submit=True):
                 col1, col2 = st.columns(2)
                 new_category = col1.selectbox("Category", CATEGORY_OPTIONS)
-                new_comp_name = col2.text_input("Competition Name (e.g., Junior Cup)")
+                new_comp_name = col2.text_input("Competition Name (e.g., Barton Shield)")
                 
                 col3, col4 = st.columns(2)
                 new_opp_team = col3.text_input("Opposition Team")
@@ -260,7 +273,8 @@ elif role == "admin":
                 new_date = col5.date_input("Match Date")
                 new_start_time = col6.time_input("Start Time (Optional)", value=None)
                 
-                new_hide_mins = st.number_input("Hide Player Names Until (Mins before start)", min_value=0, value=0, step=15)
+                # Defaults to 60 as requested
+                new_hide_mins = st.number_input("Hide Player Names Until (Mins before start)", min_value=0, value=60, step=15)
                 
                 if st.form_submit_button("Create Competition"):
                     if new_comp_name and new_opp_team:
@@ -287,10 +301,10 @@ elif role == "admin":
             st.subheader("Add Match to Competition")
             if comps:
                 with st.form("create_pairing_form", clear_on_submit=True):
-                    comp_names = {f"{c['category']} {c['comp_name']}": c['id'] for c in comps}
-                    target_comp = st.selectbox("Select Competition", list(comp_names.keys()))
+                    comp_names_dict = {get_comp_display_name(c): c['id'] for c in comps}
+                    target_comp_title = st.selectbox("Select Competition", list(comp_names_dict.keys()))
                     
-                    target_comp_data = next((c for c in comps if f"{c['category']} {c['comp_name']}" == target_comp), None)
+                    target_comp_data = next((c for c in comps if get_comp_display_name(c) == target_comp_title), None)
                     default_opp_name = target_comp_data["opposition_team"] if target_comp_data else ""
                     
                     col1, col2 = st.columns(2)
@@ -301,7 +315,7 @@ elif role == "admin":
                     if st.form_submit_button("Add Match Pairing"):
                         if lb_player_input and opp_player_input:
                             supabase.table('pairings').insert({
-                                "competition_id": comp_names[target_comp],
+                                "competition_id": comp_names_dict[target_comp_title],
                                 "landb_player": lb_player_input, "opposition_player": opp_player_input,
                                 "venue": match_venue, "hole": "1", "score": "All Square",
                                 "status": "Not Started", "leader": "Tied"
@@ -316,12 +330,11 @@ elif role == "admin":
         with tab3:
             st.subheader("Edit/Delete Competition")
             if comps:
-                # Add Filter
                 filter_cat = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_edit_comp")
                 filtered_comps = [c for c in comps if filter_cat == "All" or c['category'] == filter_cat]
                 
                 if filtered_comps:
-                    comp_names_dict = {f"{c['category']} {c['comp_name']}": c for c in filtered_comps}
+                    comp_names_dict = {get_comp_display_name(c): c for c in filtered_comps}
                     edit_comp_name = st.selectbox("Select Competition", list(comp_names_dict.keys()))
                     c_data = comp_names_dict[edit_comp_name]
                     
@@ -335,19 +348,19 @@ elif role == "admin":
                         e_round = e_c4.text_input("Round", value=c_data.get('round', ''))
                         
                         e_c5, e_c6 = st.columns(2)
-                        
-                        # Safe Date Parsing
                         try:
                             parsed_date = datetime.strptime(c_data['match_date'], "%Y-%m-%d").date() if c_data.get('match_date') else datetime.now(ireland_tz).date()
                         except:
                             parsed_date = datetime.now(ireland_tz).date()
                             
                         e_date = e_c5.date_input("Match Date", value=parsed_date)
-                        
                         parsed_time = safe_time_parse(c_data.get('start_time', ''))
                         e_time = e_c6.time_input("Start Time", value=parsed_time)
                         
-                        e_hide_mins = st.number_input("Hide Player Names Until (Mins before)", min_value=0, value=int(c_data.get('hide_mins') or 0), step=15)
+                        # Preserve existing value or default to 60 if null
+                        hide_val = c_data.get('hide_mins')
+                        hide_val = int(hide_val) if hide_val is not None else 60
+                        e_hide_mins = st.number_input("Hide Player Names Until (Mins before)", min_value=0, value=hide_val, step=15)
                         
                         if st.form_submit_button("Update Competition"):
                             updated_time_str = e_time.strftime("%H:%M") if e_time else None
@@ -376,12 +389,11 @@ elif role == "admin":
         with tab4:
             st.subheader("Edit/Delete Match")
             if comps:
-                # Add Filter
                 filter_cat_m = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_edit_match")
                 filtered_comps_m = [c for c in comps if filter_cat_m == "All" or c['category'] == filter_cat_m]
                 
                 if filtered_comps_m:
-                    comp_names_dict_m = {f"{c['category']} {c['comp_name']}": c['id'] for c in filtered_comps_m}
+                    comp_names_dict_m = {get_comp_display_name(c): c['id'] for c in filtered_comps_m}
                     t_comp = st.selectbox("Competition", list(comp_names_dict_m.keys()), key="edit_m_c")
                     p_list = [p for p in pairings if p["competition_id"] == comp_names_dict_m[t_comp]]
                     
@@ -423,7 +435,16 @@ elif role == "admin":
             
             st.divider()
             st.markdown("**Manager Portal Links** (Locks user to specific competition):")
-            for c in comps:
-                safe_comp_name = urllib.parse.quote(f"{c['category']} {c['comp_name']}")
-                st.markdown(f"**{c['category']} {c['comp_name']}**")
-                st.code(f"{APP_BASE_URL}/?role=manager&comp={safe_comp_name}", language="text")
+            
+            filter_cat_links = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_links")
+            filtered_comps_links = [c for c in comps if filter_cat_links == "All" or c['category'] == filter_cat_links]
+            
+            if filtered_comps_links:
+                for c in filtered_comps_links:
+                    comp_id = generate_comp_id(c)
+                    display_title = get_comp_display_name(c)
+                    
+                    st.markdown(f"**{display_title}**")
+                    st.code(f"{APP_BASE_URL}/?role=manager&comp={comp_id}", language="text")
+            else:
+                st.info(f"No {filter_cat_links} competitions found.")
