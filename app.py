@@ -1,38 +1,39 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import time
 from supabase import create_client
 import urllib.parse
 import base64
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# Inject Noto Serif font safely
+# Inject Noto Serif font safely and hide default menus
 st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap');
-    div, p, h1, h2, h3, h4, h5, h6, .stMarkdown, .stButton, .stRadio, .stCheckbox { 
-        font-family: 'Noto Serif', serif !important; 
-    }
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    </style>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap');
+div, p, h1, h2, h3, h4, h5, h6, .stMarkdown, .stButton, .stRadio, .stCheckbox { 
+    font-family: 'Noto Serif', serif !important; 
+}
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+</style>
 """, unsafe_allow_html=True)
 
 # L&B Palette
 LB_COLOR, OPP_COLOR, TIE_COLOR = "#0D4722", "#4A5568", "#A0AEC0"
 APP_BASE_URL = "https://landb-inter-club-scoring.streamlit.app"
 ireland_tz = ZoneInfo("Europe/Dublin")
-supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-# --- LIST DEFINITIONS ---
-HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
-SCORE_OPTIONS = ["All Square"] + [f"{i} Up" for i in range(1, 10)] + [f"{i} Down" for i in range(1, 10)]
-VENUE_OPTIONS = ["Home", "Away"]
-CATEGORY_OPTIONS = ["Mens", "Womens", "Boys", "Mixed"]
+@st.cache_resource
+def init_connection():
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+supabase = init_connection()
 
 # --- HELPERS ---
 def get_base64_image(image_path):
@@ -64,7 +65,6 @@ def calculate_overall_score(pairings):
 def safe_index(lst, val): return lst.index(val) if val in lst else 0
 
 def safe_time_parse(time_str):
-    """Safely converts legacy database text into a time object for the widget."""
     if not time_str: return None
     for fmt in ("%H:%M", "%H:%M:%S", "%I:%M %p"):
         try:
@@ -73,115 +73,216 @@ def safe_time_parse(time_str):
             pass
     return None
 
-@st.cache_data(ttl=10)
+def should_hide_names(comp):
+    """Calculates if the current time is before the reveal window."""
+    hide_mins = comp.get('hide_mins', 0)
+    if not hide_mins or int(hide_mins) <= 0: return False
+    if not comp.get('match_date') or not comp.get('start_time'): return False
+    
+    try:
+        dt_str = f"{comp['match_date']} {comp['start_time']}"
+        dt_obj = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
+        dt_aware = dt_obj.replace(tzinfo=ireland_tz)
+        reveal_time = dt_aware - timedelta(minutes=int(hide_mins))
+        now = datetime.now(ireland_tz)
+        return now < reveal_time
+    except Exception:
+        return False
+
+# --- FLATTENED HTML GENERATORS (Fixes Markdown Bug) ---
+def generate_scoreboard_html(lb_score, opp_score, opp_team_name):
+    return f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto;'><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>L&B</div><div style='background-color: {LB_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{lb_score}</div></div><div style='flex: 1; text-align: center; font-size: 35px; font-weight: bold; padding-top: 25px;'>:</div><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>{opp_team_name}</div><div style='background-color: {OPP_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{opp_score}</div></div></div>"
+
+def generate_pairing_html(p, view_mode="public", hide_names=False):
+    lb_name_display = "TBD" if hide_names else p.get('landb_player', 'TBD')
+    opp_name_display = "TBD" if hide_names else p.get('opposition_player', 'TBD')
+
+    if p['leader'] == 'L&B':
+        lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{p['score']}</div>"
+    elif p['leader'] == 'Tied':
+        lb_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>ALL SQUARE</div>"
+    else:
+        lb_score_html = f"<div style='padding: 4px; visibility: hidden;'>Spacer</div>"
+        
+    if p['leader'] == 'Opposition':
+        opp_score_html = f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{p['score'].replace('Down', 'Up')}</div>"
+    elif p['leader'] == 'Tied':
+        opp_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>ALL SQUARE</div>"
+    else:
+        opp_score_html = f"<div style='padding: 4px; visibility: hidden;'>Spacer</div>"
+        
+    hole_val = str(p.get('hole', '1'))
+    hole_display = f"Hole {hole_val}" if hole_val.isdigit() else hole_val 
+    p_status_color = "gray" if p['status'] == "Not Started" else ("darkred" if p['status'] == "FINISHED" else "#8bc34a")
+    
+    venue_html = f"<div style='font-size: 11px; color: gray; margin-top: 4px;'>📍 {p.get('venue', 'Unknown')}</div>" if view_mode == "manager" else ""
+    
+    return f"<div style='display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 10px;'><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{lb_score_html}<div style='font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;'>{lb_name_display}</div>{venue_html}</div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'><div style='background-color: black; color: white; padding: 2px; font-size: 13px; border-radius: 3px; margin-bottom: 4px;'>{hole_display}</div><div style='background-color: {p_status_color}; color: white; padding: 2px; font-size: 11px; font-weight: bold; border-radius: 3px;'>{p['status']}</div></div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{opp_score_html}<div style='font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;'>{opp_name_display}</div></div></div>"
+
+# --- LIST DEFINITIONS ---
+HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
+SCORE_OPTIONS = ["All Square"] + [f"{i} Up" for i in range(1, 10)] + [f"{i} Down" for i in range(1, 10)]
+VENUE_OPTIONS = ["Home", "Away"]
+CATEGORY_OPTIONS = ["Mens", "Womens", "Boys", "Mixed"]
+
+# --- DATA FETCHING ---
+@st.cache_data(ttl=10) # Refreshes cache every 10 seconds normally
 def fetch_all():
     try:
         comps = supabase.table("competitions").select("*").execute().data
         pairings = supabase.table("pairings").select("*").execute().data
         return comps, pairings
-    except: return [], []
+    except:
+        return [], []
 
-# --- NAVIGATION ---
 comps, pairings = fetch_all()
+
+# --- SECURE URL ROUTING ---
 query_params = st.query_params
 role = query_params.get("role", "public")
 
-# --- PUBLIC SCOREBOARD ---
+# --- VIEW 1: PUBLIC SCOREBOARD ---
 if role == "public":
     logo_base64 = get_base64_image("app/static/lb_logo.png") or get_base64_image("static/lb_logo.png")
     logo_html = f'<img src="data:image/png;base64,{logo_base64}" width="120" style="margin-bottom: 5px;"/>' if logo_base64 else ""
 
     st.markdown(f"<div style='text-align: center;'>{logo_html}<h2 style='font-weight: 700; margin-top: 0px;'>L&B Match Centre</h2></div>", unsafe_allow_html=True)
     st.divider()
-    if st.button("↻ Refresh Scores", use_container_width=True): st.rerun()
+    
+    if not comps:
+        st.info("No active competitions.")
+        st.stop()
+        
+    if st.button("↻ Refresh Scores", use_container_width=True): 
+        fetch_all.clear()
+        st.rerun()
     
     for comp in comps:
-        comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], key=lambda x: x['id'])
+        comp_pairings = [p for p in pairings if p["competition_id"] == comp["id"]]
+        comp_pairings = sorted(comp_pairings, key=lambda x: x['id'])
+        
         lb, opp = calculate_overall_score(comp_pairings)
         status = get_comp_status(comp_pairings)
         
-        st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>{comp['category']} {comp['comp_name']}</h3>", unsafe_allow_html=True)
+        # Check if we need to hide the names for this specific competition
+        hide_names = should_hide_names(comp)
+        
+        # Append Round if it exists
+        round_text = f" - {comp['round']}" if comp.get('round') else ""
+        full_title = f"{comp['category']} {comp['comp_name']}{round_text}"
+        
+        st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>{full_title}</h3>", unsafe_allow_html=True)
         st.markdown(f"<div style='text-align: center;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
         
-        c1, c2, c3, c4, c5 = st.columns([1, 4, 1, 4, 1])
-        c2.markdown(f"<div style='text-align:center; font-weight:bold;'>L&B</div><div style='background:{LB_COLOR}; color:white; padding:10px; text-align:center; border-radius:5px; font-weight:bold; font-size:20px;'>{lb}</div>", unsafe_allow_html=True)
-        c3.markdown("<div style='text-align:center; font-size:30px; font-weight:bold; padding-top:20px;'>:</div>", unsafe_allow_html=True)
-        c4.markdown(f"<div style='text-align:center; font-weight:bold;'>{comp['opposition_team']}</div><div style='background:{OPP_COLOR}; color:white; padding:10px; text-align:center; border-radius:5px; font-weight:bold; font-size:20px;'>{opp}</div>", unsafe_allow_html=True)
+        st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team']), unsafe_allow_html=True)
         
         with st.expander(f"View Pairings (Last updated: {datetime.now(ireland_tz).strftime('%H:%M')})"):
             for p in comp_pairings:
-                # Score blocks above names
-                s1, s2 = st.columns(2)
-                s1.markdown(f"<div style='background:{LB_COLOR if p['leader']=='L&B' else (TIE_COLOR if p['leader']=='Tied' else 'transparent')}; color:white; text-align:center; border-radius:3px; font-weight:bold; margin-bottom:5px;'>{p['score'] if p['leader'] != 'Opposition' else '&nbsp;'}</div>", unsafe_allow_html=True)
-                s2.markdown(f"<div style='background:{OPP_COLOR if p['leader']=='Opposition' else (TIE_COLOR if p['leader']=='Tied' else 'transparent')}; color:white; text-align:center; border-radius:3px; font-weight:bold; margin-bottom:5px;'>{p['score'].replace('Down', 'Up') if p['leader'] != 'L&B' else '&nbsp;'}</div>", unsafe_allow_html=True)
-                n1, n2 = st.columns(2)
-                n1.write(f"**{p.get('landb_player')}**"); n2.write(f"**{p.get('opposition_player')}**")
+                st.markdown(generate_pairing_html(p, "public", hide_names), unsafe_allow_html=True)
                 st.write("---")
         st.divider()
 
-# --- MANAGER PORTAL ---
+# --- VIEW 2: MANAGER PORTAL ---
 elif role == "manager":
     selected_comp_name = urllib.parse.unquote(query_params.get("comp", ""))
     comp = next((c for c in comps if f"{c['category']} {c['comp_name']}" == selected_comp_name), None)
+    
     if comp:
         st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>Manage: {selected_comp_name}</h3>", unsafe_allow_html=True)
         comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], key=lambda x: x['id'])
+        
         lb, opp = calculate_overall_score(comp_pairings)
+        status = get_comp_status(comp_pairings)
         
         st.markdown(f"<p style='text-align: center; margin-bottom: 5px;'>Live Score: L&B <b>{lb}</b> - <b>{opp}</b> {comp['opposition_team']}</p>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; margin-bottom: 20px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold; font-size: 12px;'>{status}</span></div>", unsafe_allow_html=True)
         st.divider()
         
+        if not comp_pairings:
+            st.info("No matches added to this competition yet.")
+            
         for p in comp_pairings:
-            with st.expander(f"{p['landb_player']} vs {p['opposition_player']}"):
-                h = st.selectbox("Hole", HOLE_OPTIONS, index=safe_index(HOLE_OPTIONS, str(p['hole'])), key=f"h_{p['id']}")
-                sc = st.selectbox("Score (Relative to L&B)", SCORE_OPTIONS, index=safe_index(SCORE_OPTIONS, p['score']), key=f"sc_{p['id']}")
-                fin = st.checkbox("Match Finished", value=(p['status'] == "FINISHED"), key=f"f_{p['id']}")
-                if st.button("Save", key=f"btn_{p['id']}", type="primary"):
-                    supabase.table("pairings").update({"hole": h, "score": sc, "status": "FINISHED" if fin else "LIVE", "leader": get_leader_from_score(sc)}).eq("id", p['id']).execute()
+            # Managers always see the real names, never hidden
+            st.markdown(generate_pairing_html(p, "manager", hide_names=False), unsafe_allow_html=True)
+            
+            with st.expander(f"Update: {p['landb_player']} vs {p['opposition_player']}", expanded=False):
+                uc1, uc2 = st.columns(2)
+                h = uc1.selectbox("Hole", HOLE_OPTIONS, index=safe_index(HOLE_OPTIONS, str(p['hole'])), key=f"h_{p['id']}")
+                sc = uc2.selectbox("Score (Relative to L&B)", SCORE_OPTIONS, index=safe_index(SCORE_OPTIONS, p['score']), key=f"sc_{p['id']}")
+                fin = st.checkbox("Match Finished (Check to lock final score)", value=(p['status'] == "FINISHED"), key=f"fin_{p['id']}")
+                
+                if st.button("Save Match Update", key=f"btn_{p['id']}", type="primary"):
+                    new_leader = get_leader_from_score(sc)
+                    supabase.table("pairings").update({
+                        "hole": h, "score": sc, "status": "FINISHED" if fin else "LIVE", "leader": new_leader
+                    }).eq("id", p['id']).execute()
+                    
+                    fetch_all.clear() # Clear cache so update is instant
                     st.success("Updated!"); time.sleep(1.5); st.rerun()
+            st.divider()
+    else:
+        st.error("Invalid Manager Link. Competition not found.")
 
-# --- ADMIN CONSOLE ---
+# --- VIEW 3: ADMIN CONSOLE ---
 elif role == "admin":
-    if "admin_auth" not in st.session_state: st.session_state.admin_auth = False
+    if "admin_auth" not in st.session_state:
+        st.session_state.admin_auth = False
+
     if not st.session_state.admin_auth:
         st.markdown("<h2 style='text-align: center;'>Admin Login</h2>", unsafe_allow_html=True)
-        pwd = st.text_input("Password", type="password")
+        pwd = st.text_input("Enter Admin Password", type="password")
         if st.button("Login", use_container_width=True):
-            if pwd == st.secrets.get("ADMIN_PASSWORD", "landb1909"): 
-                st.session_state.admin_auth = True; st.rerun()
+            correct_password = st.secrets.get("ADMIN_PASSWORD", "landb1909")
+            if pwd == correct_password:
+                st.session_state.admin_auth = True
+                st.rerun()
             else:
-                st.error("Incorrect Password")
+                st.error("Incorrect password")
     else:
         st.header("Admin Console")
-        if st.button("Logout"): st.session_state.admin_auth = False; st.rerun()
+        if st.button("Logout of Admin"):
+            st.session_state.admin_auth = False
+            st.rerun()
+            
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Create Comp", "Add Match", "Edit Comp", "Edit Match", "Access Links"])
         
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Create Comp", "Add Match", "Edit Comp", "Edit Match", "Links"])
-        
+        # TAB 1: CREATE COMPETITION
         with tab1:
             st.subheader("Create New Competition")
             with st.form("create_comp_form", clear_on_submit=True):
                 col1, col2 = st.columns(2)
                 new_category = col1.selectbox("Category", CATEGORY_OPTIONS)
                 new_comp_name = col2.text_input("Competition Name (e.g., Junior Cup)")
+                
                 col3, col4 = st.columns(2)
                 new_opp_team = col3.text_input("Opposition Team")
+                new_round = col4.text_input("Round (e.g., Semi-Final)")
                 
-                # New Time Input Logic
-                new_start_time = col4.time_input("Start Time (Optional)", value=None)
-                new_date = st.date_input("Match Date")
+                col5, col6 = st.columns(2)
+                new_date = col5.date_input("Match Date")
+                new_start_time = col6.time_input("Start Time (Optional)", value=None)
+                
+                new_hide_mins = st.number_input("Hide Player Names Until (Mins before start)", min_value=0, value=0, step=15)
                 
                 if st.form_submit_button("Create Competition"):
                     if new_comp_name and new_opp_team:
                         time_string = new_start_time.strftime("%H:%M") if new_start_time else ""
                         supabase.table('competitions').insert({
-                            "comp_name": new_comp_name, "category": new_category,
-                            "opposition_team": new_opp_team, "match_date": str(new_date),
-                            "start_time": time_string
+                            "comp_name": new_comp_name, 
+                            "category": new_category,
+                            "opposition_team": new_opp_team, 
+                            "round": new_round,
+                            "match_date": str(new_date),
+                            "start_time": time_string,
+                            "hide_mins": new_hide_mins
                         }).execute()
+                        
+                        fetch_all.clear() # Cache clear
                         st.success(f"Created {new_category} {new_comp_name}!"); time.sleep(1.5); st.rerun()
                     else:
                         st.error("Please fill out Name and Opposition.")
                         
+        # TAB 2: ADD MATCH
         with tab2:
             st.subheader("Add Match to Competition")
             if comps:
@@ -189,7 +290,6 @@ elif role == "admin":
                     comp_names = {f"{c['category']} {c['comp_name']}": c['id'] for c in comps}
                     target_comp = st.selectbox("Select Competition", list(comp_names.keys()))
                     
-                    # Pre-fill opposition name based on selection
                     target_comp_data = next((c for c in comps if f"{c['category']} {c['comp_name']}" == target_comp), None)
                     default_opp_name = target_comp_data["opposition_team"] if target_comp_data else ""
                     
@@ -206,10 +306,13 @@ elif role == "admin":
                                 "venue": match_venue, "hole": "1", "score": "All Square",
                                 "status": "Not Started", "leader": "Tied"
                             }).execute()
+                            
+                            fetch_all.clear() # Cache clear
                             st.success("Match added!"); time.sleep(1.5); st.rerun()
                         else:
                             st.error("Please enter both player names.")
                             
+        # TAB 3: EDIT COMP
         with tab3:
             st.subheader("Edit/Delete Competition")
             if comps:
@@ -221,24 +324,35 @@ elif role == "admin":
                     e_c1, e_c2 = st.columns(2)
                     e_cat = e_c1.selectbox("Category", CATEGORY_OPTIONS, index=safe_index(CATEGORY_OPTIONS, c_data['category']))
                     e_name = e_c2.text_input("Competition Name", value=c_data['comp_name'])
+                    
                     e_c3, e_c4 = st.columns(2)
                     e_opp = e_c3.text_input("Opposition Team", value=c_data['opposition_team'])
+                    e_round = e_c4.text_input("Round", value=c_data.get('round', ''))
                     
-                    # Safe parsing for existing time
+                    e_c5, e_c6 = st.columns(2)
+                    e_date = e_c5.date_input("Match Date", value=datetime.strptime(c_data['date'], "%Y-%m-%d").date() if c_data.get('date') else datetime.now(ireland_tz).date())
                     parsed_time = safe_time_parse(c_data.get('start_time', ''))
-                    e_time = e_c4.time_input("Start Time", value=parsed_time)
+                    e_time = e_c6.time_input("Start Time", value=parsed_time)
+                    
+                    e_hide_mins = st.number_input("Hide Player Names Until (Mins before)", min_value=0, value=int(c_data.get('hide_mins', 0)), step=15)
                     
                     if st.form_submit_button("Update Competition"):
                         updated_time_str = e_time.strftime("%H:%M") if e_time else ""
                         supabase.table('competitions').update({
-                            "comp_name": e_name, "category": e_cat, "opposition_team": e_opp, "start_time": updated_time_str
+                            "comp_name": e_name, "category": e_cat, "opposition_team": e_opp, 
+                            "round": e_round, "match_date": str(e_date), "start_time": updated_time_str,
+                            "hide_mins": e_hide_mins
                         }).eq('id', c_data['id']).execute()
+                        
+                        fetch_all.clear() # Cache clear
                         st.success("Updated!"); time.sleep(1.5); st.rerun()
                         
                 if st.button(f"🚨 Delete {edit_comp_name} 🚨", type="primary"):
                     supabase.table('competitions').delete().eq('id', c_data['id']).execute()
+                    fetch_all.clear() # Cache clear
                     st.success("Deleted."); time.sleep(1.5); st.rerun()
                     
+        # TAB 4: EDIT MATCH
         with tab4:
             st.subheader("Edit/Delete Match")
             if comps:
@@ -255,23 +369,32 @@ elif role == "admin":
                         col1, col2 = st.columns(2)
                         e_lb = col1.text_input("L&B Player", value=p_data.get('landb_player', ''))
                         e_opp = col2.text_input("Opposition Player", value=p_data.get('opposition_player', ''))
+                        e_venue = st.selectbox("Venue", VENUE_OPTIONS, index=safe_index(VENUE_OPTIONS, p_data.get('venue', 'Home')))
+                        
                         if st.form_submit_button("Update Match"):
                             supabase.table('pairings').update({
-                                "landb_player": e_lb, "opposition_player": e_opp
+                                "landb_player": e_lb, "opposition_player": e_opp, "venue": e_venue
                             }).eq('id', p_data['id']).execute()
+                            
+                            fetch_all.clear() # Cache clear
                             st.success("Updated!"); time.sleep(1.5); st.rerun()
+                            
                     if st.button("🚨 Delete Match 🚨", type="primary"):
                         supabase.table('pairings').delete().eq('id', p_data['id']).execute()
+                        fetch_all.clear() # Cache clear
                         st.success("Deleted."); time.sleep(1.5); st.rerun()
 
+        # TAB 5: ACCESS LINKS
         with tab5:
             st.subheader("System Access Links")
             st.write("Save these links or send them to your team managers.")
+            
             st.markdown("**Admin Console Link** (Password Required):")
             st.code(f"{APP_BASE_URL}/?role=admin", language="text")
+            
             st.divider()
             st.markdown("**Manager Portal Links** (Locks user to specific competition):")
             for c in comps:
-                safe_name = urllib.parse.quote(f"{c['category']} {c['comp_name']}")
+                safe_comp_name = urllib.parse.quote(f"{c['category']} {c['comp_name']}")
                 st.markdown(f"**{c['category']} {c['comp_name']}**")
-                st.code(f"{APP_BASE_URL}/?role=manager&comp={safe_name}", language="text")
+                st.code(f"{APP_BASE_URL}/?role=manager&comp={safe_comp_name}", language="text")
