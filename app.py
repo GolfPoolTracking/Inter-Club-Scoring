@@ -162,8 +162,8 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
 HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
 SCORE_OPTIONS = [f"{i} Up" for i in range(10, 0, -1)] + ["All Square"] + [f"{i} Down" for i in range(1, 11)]
 VENUE_OPTIONS = ["Home", "Away"]
-CATEGORY_OPTIONS = ["Mens", "Womens", "Boys", "Girls", "Mixed"]
-ROUND_OPTIONS = ["Round 1", "Round 2", "Round 3", "Round 4", "Quarter-Final", "Semi-Final", "Final"]
+CATEGORY_OPTIONS = ["Mens", "Womens", "Boys", "Girls, "Mixed"]
+ROUND_OPTIONS = ["Not Applicable", "Round 1", "Round 2", "Round 3", "Round 4", "Quarter-Final", "Semi-Final", "Final"]
 
 # --- DATA FETCHING ---
 @st.cache_data(ttl=10)
@@ -180,6 +180,11 @@ def fetch_all():
         return [], [], []
 
 comps, pairings, masters = fetch_all()
+
+# Get unique years from the 'year' column for filtering
+all_years = sorted(list(set([c.get('year', datetime.now(ireland_tz).year) for c in comps if c.get('year')])), reverse=True)
+if not all_years: 
+    all_years = [datetime.now(ireland_tz).year]
 
 # --- SECURE URL ROUTING ---
 query_params = st.query_params
@@ -200,17 +205,14 @@ if role == "public":
             fetch_all.clear()
             st.rerun()
             
-        # Get unique years from the 'year' column, default to current if empty
-        years = sorted(list(set([c.get('year', datetime.now(ireland_tz).year) for c in active_comps if c.get('year')])), reverse=True)
-        if not years: years = [datetime.now(ireland_tz).year]
-        
         c_yr, c_cat = st.columns([1, 3])
         with c_yr:
-            sel_year = st.selectbox("Year", years)
+            public_years = sorted(list(set([c.get('year', datetime.now(ireland_tz).year) for c in active_comps if c.get('year')])), reverse=True)
+            if not public_years: public_years = [datetime.now(ireland_tz).year]
+            sel_year = st.selectbox("Year", public_years)
         with c_cat:
             filter_cat = st.radio("Category", ["All"] + CATEGORY_OPTIONS, horizontal=True)
             
-        # Efficiently filter using the database 'year' column
         filtered_comps = [
             c for c in active_comps 
             if c.get('year') == sel_year and (filter_cat == "All" or c['category'] == filter_cat)
@@ -220,7 +222,6 @@ if role == "public":
             st.info("No competitions match your filters.")
             
         for comp in filtered_comps:
-            # Sort pairings by display_order
             comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], 
                                    key=lambda x: x.get('display_order', 0))
             
@@ -228,7 +229,6 @@ if role == "public":
             status = get_comp_status(comp_pairings)
             hide_names, reveal_time = should_hide_names(comp)
             
-            # Header with Date and Time
             st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-bottom: 2px;'>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
             match_dt = f"📅 {format_date_display(comp.get('match_date', 'TBD'))}"
             if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
@@ -262,7 +262,6 @@ elif role == "manager":
     
     if comp:
         st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>Manage: {get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
-        # Date/Time for Manager
         match_dt = f"📅 {format_date_display(comp.get('match_date', 'TBD'))}"
         if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
         st.markdown(f"<p style='text-align: center; color: #555; font-size: 14px;'>{match_dt}</p>", unsafe_allow_html=True)
@@ -321,9 +320,15 @@ elif role == "admin":
                     st.error("Incorrect password or ADMIN_PASSWORD secret not set.")
     else:
         st.header("Admin Console")
-        if st.button("Logout of Admin"):
-            st.session_state.admin_auth = False
-            st.rerun()
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            admin_year = st.selectbox("Global Admin View Year", all_years, index=0)
+        with c2:
+            st.write("") 
+            st.write("") 
+            if st.button("Logout of Admin"):
+                st.session_state.admin_auth = False
+                st.rerun()
             
         tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Create Comp", "Edit Comp", "Add Match", "Edit Match", "Access Links", "Master List"])
         
@@ -352,7 +357,6 @@ elif role == "admin":
                             time_string = new_start_time.strftime("%H:%M") if new_start_time else None
                             round_val = new_round if new_round != "Not Applicable" else None
                             
-                            # EXTRACT YEAR
                             match_year = new_date.year
 
                             supabase.table('competitions').insert({
@@ -380,7 +384,12 @@ elif role == "admin":
             st.subheader("Edit/Delete Competition")
             if comps:
                 filter_cat = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_edit_comp")
-                filtered_comps = [c for c in comps if filter_cat == "All" or c['category'] == filter_cat]
+                
+                # Filter by Year and Category
+                filtered_comps = [
+                    c for c in comps 
+                    if c.get('year') == admin_year and (filter_cat == "All" or c['category'] == filter_cat)
+                ]
                 
                 if filtered_comps:
                     comp_names_dict = {get_comp_display_name(c): c for c in filtered_comps}
@@ -415,7 +424,6 @@ elif role == "admin":
                             updated_time_str = e_time.strftime("%H:%M") if e_time else None
                             updated_round_str = e_round if e_round != "Not Applicable" else None
                             
-                            # EXTRACT YEAR
                             updated_year = e_date.year
 
                             try:
@@ -432,25 +440,28 @@ elif role == "admin":
                                 
                     with st.popover(f"🚨 Delete {edit_comp_name} 🚨", key=f"del_comp_{c_data['id']}"):
                         st.warning(f"Confirm deletion of {edit_comp_name}?")
-                        # UI BUG FIX: Using st.empty() so the button disappears immediately when clicked
                         del_comp_placeholder = st.empty()
                         if del_comp_placeholder.button("Yes, Delete", key=f"btn_del_comp_{c_data['id']}", type="primary"):
-                            del_comp_placeholder.empty() # Clears the button
+                            del_comp_placeholder.empty()
                             supabase.table('competitions').delete().eq('id', c_data['id']).execute()
                             fetch_all.clear()
                             st.success("Deleted.")
                             time.sleep(1.5)
                             st.rerun()
                 else:
-                    st.info(f"No {filter_cat} competitions found.")
+                    st.info(f"No {filter_cat} competitions found for {admin_year}.")
                     
-
         # TAB 3: ADD MATCH
         with tab3:
             st.subheader("Add Match to Competition")
             if comps:
                 filter_cat_add = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_add_match")
-                filtered_comps_add = [c for c in comps if filter_cat_add == "All" or c['category'] == filter_cat_add]
+                
+                # Filter by Year and Category
+                filtered_comps_add = [
+                    c for c in comps 
+                    if c.get('year') == admin_year and (filter_cat_add == "All" or c['category'] == filter_cat_add)
+                ]
                 
                 if filtered_comps_add:
                     comp_names_dict_add = {get_comp_display_name(c): c['id'] for c in filtered_comps_add}
@@ -468,7 +479,6 @@ elif role == "admin":
                         if st.form_submit_button("Add Match Pairing"):
                             if lb_player_input and opp_player_input:
                                 target_comp_id = comp_names_dict_add[target_comp_title]
-                                # Get existing matches to find next display_order
                                 existing = [p for p in pairings if p["competition_id"] == target_comp_id]
                                 next_order = (max([p.get('display_order', 0) for p in existing], default=0)) + 1
                                 
@@ -485,18 +495,25 @@ elif role == "admin":
                                 st.success("Match added!"); time.sleep(1.5); st.rerun()
                             else:
                                 st.error("Please enter both player names.") 
-        
+                else:
+                    st.info(f"No {filter_cat_add} competitions found for {admin_year}.")
+
         # TAB 4: EDIT MATCH
         with tab4:
             st.subheader("Edit/Delete Match")
             if comps:
                 filter_cat_m = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_edit_match")
-                filtered_comps_m = [c for c in comps if filter_cat_m == "All" or c['category'] == filter_cat_m]
+                
+                # Filter by Year and Category
+                filtered_comps_m = [
+                    c for c in comps 
+                    if c.get('year') == admin_year and (filter_cat_m == "All" or c['category'] == filter_cat_m)
+                ]
                 
                 if filtered_comps_m:
                     comp_names_dict_m = {get_comp_display_name(c): c['id'] for c in filtered_comps_m}
                     t_comp = st.selectbox("Competition", list(comp_names_dict_m.keys()), key="edit_m_c")
-                    # Sort by display_order for the selection list
+                    
                     p_list = sorted([p for p in pairings if p["competition_id"] == comp_names_dict_m[t_comp]], 
                                     key=lambda x: x.get('display_order', 0))
                     
@@ -527,7 +544,6 @@ elif role == "admin":
                         
                         with st.popover("🚨 Delete Match 🚨", key=f"del_match_{p_data['id']}", use_container_width=True):
                             st.warning("Confirm deletion of this match?")
-                            # UI BUG FIX
                             del_match_placeholder = st.empty()
                             if del_match_placeholder.button("Yes, Delete", key=f"btn_del_match_{p_data['id']}", type="primary"):
                                 del_match_placeholder.empty()
@@ -539,7 +555,7 @@ elif role == "admin":
                     else:
                         st.info("No matches in this competition.")
                 else:
-                    st.info(f"No {filter_cat_m} competitions found.")
+                    st.info(f"No {filter_cat_m} competitions found for {admin_year}.")
                     
         # TAB 5: ACCESS LINKS
         with tab5:
@@ -553,20 +569,27 @@ elif role == "admin":
             st.markdown("**Manager Portal Links** (Locks user to specific competition):")
             
             filter_cat_links = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_links")
-            filtered_comps_links = [c for c in comps if filter_cat_links == "All" or c['category'] == filter_cat_links]
+            show_archived = st.checkbox("Show Archived Competitions")
+            
+            # Apply filters for year, category, and archive status
+            filtered_comps_links = [
+                c for c in comps 
+                if c.get('year') == admin_year 
+                and (filter_cat_links == "All" or c['category'] == filter_cat_links)
+                and (show_archived or not c.get('archived', False))
+            ]
             
             if filtered_comps_links:
                 for c in filtered_comps_links:
                     comp_id = generate_comp_id(c)
-                    # Append the access code to the existing ID
                     secure_comp_id = f"{comp_id}_{c.get('access_code', '000000')}"
                     
-                    display_title = get_comp_display_name(c)
+                    display_title = f"{get_comp_display_name(c)} {'(Archived)' if c.get('archived') else ''}"
                     
                     st.markdown(f"**{display_title}**")
                     st.code(f"{APP_BASE_URL}/?role=manager&comp={secure_comp_id}", language="text")
             else:
-                st.info(f"No {filter_cat_links} competitions found.")
+                st.info(f"No links found for the selected filters in {admin_year}.")
 
         # TAB 6: MASTER LIST MANAGEMENT
         with tab6:
@@ -605,7 +628,6 @@ elif role == "admin":
                     
                     with st.popover(f"🚨 Delete {m_data['comp_name']} 🚨", use_container_width=True):
                         st.warning(f"Confirm deletion of {m_data['comp_name']} from Master List?")
-                        # UI BUG FIX
                         del_master_placeholder = st.empty()
                         if del_master_placeholder.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary"):
                             del_master_placeholder.empty()
