@@ -308,7 +308,7 @@ elif role == "admin":
         st.markdown("<h2 style='text-align: center;'>Admin Login</h2>", unsafe_allow_html=True)
         
         with st.form("admin_login_form"):
-            pwd = st.text_input("Enter Admin Password", type="password", ""))
+            pwd = st.text_input("Enter Admin Password", type="password", "")
             submit_button = st.form_submit_button("Login", use_container_width=True)
             
             if submit_button:
