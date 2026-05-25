@@ -203,7 +203,7 @@ if role == "public":
             
         for comp in filtered_comps:
             comp_pairings = [p for p in pairings if p["competition_id"] == comp["id"]]
-            comp_pairings = sorted(comp_pairings, key=lambda x: x['id'])
+            comp_pairings = sorted(comp_pairings, key=lambda x: x.get('display_order', 0))
             
             lb, opp = calculate_overall_score(comp_pairings)
             status = get_comp_status(comp_pairings)
@@ -446,52 +446,59 @@ elif role == "admin":
                 else:
                     st.info(f"No {filter_cat_add} competitions found.")
         
-        # TAB 4: EDIT MATCH
-        with tab4:
-            st.subheader("Edit/Delete Match")
-            if comps:
-                filter_cat_m = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_edit_match")
-                filtered_comps_m = [c for c in comps if filter_cat_m == "All" or c['category'] == filter_cat_m]
+# --- TAB 4: EDIT MATCH ---
+with tab4:
+    st.subheader("Edit/Delete Match")
+    if comps:
+        filter_cat_m = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_edit_match")
+        filtered_comps_m = [c for c in comps if filter_cat_m == "All" or c['category'] == filter_cat_m]
+        
+        if filtered_comps_m:
+            comp_names_dict_m = {get_comp_display_name(c): c['id'] for c in filtered_comps_m}
+            t_comp = st.selectbox("Competition", list(comp_names_dict_m.keys()), key="edit_m_c")
+            # Sort by display_order for the selection list
+            p_list = sorted([p for p in pairings if p["competition_id"] == comp_names_dict_m[t_comp]], 
+                            key=lambda x: x.get('display_order', 0))
+            
+            if p_list:
+                p_opts = {f"{p.get('landb_player')} vs {p.get('opposition_player')}": p for p in p_list}
+                sel_p = st.selectbox("Match to Edit", list(p_opts.keys()))
+                p_data = p_opts[sel_p]
                 
-                if filtered_comps_m:
-                    comp_names_dict_m = {get_comp_display_name(c): c['id'] for c in filtered_comps_m}
-                    t_comp = st.selectbox("Competition", list(comp_names_dict_m.keys()), key="edit_m_c")
-                    p_list = [p for p in pairings if p["competition_id"] == comp_names_dict_m[t_comp]]
+                with st.form("edit_match_form"):
+                    col1, col2 = st.columns(2)
+                    e_lb = col1.text_input("L&B Player", value=p_data.get('landb_player', ''))
+                    e_opp = col2.text_input("Opposition Player", value=p_data.get('opposition_player', ''))
                     
-                    if p_list:
-                        p_opts = {f"{p.get('landb_player')} vs {p.get('opposition_player')}": p for p in p_list}
-                        sel_p = st.selectbox("Match to Edit", list(p_opts.keys()))
-                        p_data = p_opts[sel_p]
+                    e_c3, e_c4 = st.columns(2)
+                    e_venue = e_c3.selectbox("Venue", VENUE_OPTIONS, index=safe_index(VENUE_OPTIONS, p_data.get('venue', 'Home')))
+                    e_order = e_c4.number_input("Display Order", value=p_data.get('display_order', 0), step=1)
+                    
+                    if st.form_submit_button("Update Match"):
+                        supabase.table('pairings').update({
+                            "landb_player": e_lb, 
+                            "opposition_player": e_opp, 
+                            "venue": e_venue,
+                            "display_order": e_order
+                        }).eq('id', p_data['id']).execute()
                         
-                        with st.form("edit_match_form"):
-                            col1, col2 = st.columns(2)
-                            e_lb = col1.text_input("L&B Player", value=p_data.get('landb_player', ''))
-                            e_opp = col2.text_input("Opposition Player", value=p_data.get('opposition_player', ''))
-                            e_venue = st.selectbox("Venue", VENUE_OPTIONS, index=safe_index(VENUE_OPTIONS, p_data.get('venue', 'Home')))
-                            
-                            if st.form_submit_button("Update Match"):
-                                supabase.table('pairings').update({
-                                    "landb_player": e_lb, "opposition_player": e_opp, "venue": e_venue
-                                }).eq('id', p_data['id']).execute()
-                                
-                                fetch_all.clear() 
-                                st.success("Updated!"); time.sleep(3); st.rerun()
-                        
-                                
-                        # Confirmation popover before deleting a match
-                        with st.popover("🚨 Delete Match 🚨", key=f"del_match_{p_data['id']}", use_container_width=True):
-                            st.warning("Confirm deletion of this match?")
-                            if st.button("Yes, Delete", key=f"btn_del_match_{p_data['id']}", type="primary"):
-                                supabase.table('pairings').delete().eq('id', p_data['id']).execute()
-                                fetch_all.clear()
-                                st.success("Deleted.")
-                                time.sleep(3)
-                                st.rerun()
-                    else:
-                        st.info("No matches in this competition.")
-                else:
-                    st.info(f"No {filter_cat_m} competitions found.")
-
+                        fetch_all.clear() 
+                        st.success("Updated!"); time.sleep(1.5); st.rerun()
+                
+                # Confirmation popover before deleting a match
+                with st.popover("🚨 Delete Match 🚨", key=f"del_match_{p_data['id']}", use_container_width=True):
+                    st.warning("Confirm deletion of this match?")
+                    if st.button("Yes, Delete", key=f"btn_del_match_{p_data['id']}", type="primary"):
+                        supabase.table('pairings').delete().eq('id', p_data['id']).execute()
+                        fetch_all.clear()
+                        st.success("Deleted.")
+                        time.sleep(1.5)
+                        st.rerun()
+            else:
+                st.info("No matches in this competition.")
+        else:
+            st.info(f"No {filter_cat_m} competitions found.")
+            
         # TAB 5: ACCESS LINKS
         with tab5:
             st.subheader("System Access Links")
