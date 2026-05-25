@@ -181,7 +181,8 @@ if role == "public":
             fetch_all.clear()
             st.rerun()
             
-        years = sorted(list(set([datetime.strptime(c['match_date'], "%Y-%m-%d").year for c in active_comps if c.get('match_date')])), reverse=True)
+        # Get unique years from the 'year' column, default to current if empty
+        years = sorted(list(set([c.get('year', datetime.now(ireland_tz).year) for c in active_comps if c.get('year')])), reverse=True)
         if not years: years = [datetime.now(ireland_tz).year]
         
         c_yr, c_cat = st.columns([1, 3])
@@ -190,13 +191,11 @@ if role == "public":
         with c_cat:
             filter_cat = st.radio("Category", ["All"] + CATEGORY_OPTIONS, horizontal=True)
             
-        filtered_comps = []
-        for c in active_comps:
-            try: c_year = datetime.strptime(c['match_date'], "%Y-%m-%d").year
-            except: c_year = datetime.now(ireland_tz).year
-            
-            if c_year == sel_year and (filter_cat == "All" or c['category'] == filter_cat):
-                filtered_comps.append(c)
+        # Efficiently filter using the database 'year' column
+        filtered_comps = [
+            c for c in active_comps 
+            if c.get('year') == sel_year and (filter_cat == "All" or c['category'] == filter_cat)
+        ]
                 
         if not filtered_comps:
             st.info("No competitions match your filters.")
@@ -210,12 +209,12 @@ if role == "public":
             status = get_comp_status(comp_pairings)
             hide_names, reveal_time = should_hide_names(comp)
             
-            try: display_date = datetime.strptime(comp['match_date'], "%Y-%m-%d").strftime("%d - %m - %Y")
-            except: display_date = comp.get('match_date', '')
+            # Header with Date and Time
+            st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-bottom: 2px;'>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
+            match_dt = f"📅 {comp.get('match_date', 'TBD')}"
+            if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
+            st.markdown(f"<p style='text-align: center; color: #555; font-size: 14px;'>{match_dt}</p>", unsafe_allow_html=True)
             
-            full_title = f"{get_comp_display_name(comp)} <br><span style='font-size: 14px; color: gray;'>{display_date}</span>"
-            
-            st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-bottom: 2px;'>{full_title}</h3>", unsafe_allow_html=True)
             st.markdown(f"<div style='text-align: center;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
             
             st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team']), unsafe_allow_html=True)
@@ -224,7 +223,6 @@ if role == "public":
                 if not comp_pairings:
                     st.write("Pairings to be announced.")
                 for i, p in enumerate(comp_pairings, start=1):
-                    # Using match index 'i' in pairing
                     st.markdown(f"<div style='text-align:center; font-size:12px; color:gray;'>Match {i}</div>", unsafe_allow_html=True)
                     st.markdown(generate_pairing_html(p, "public", hide_names, reveal_time, show_venue=True), unsafe_allow_html=True)
                     st.write("---")
@@ -235,7 +233,6 @@ if role == "public":
 # --- VIEW 2: MANAGER PORTAL ---
 elif role == "manager":
     raw_comp_param = query_params.get("comp", "")
-    
     if "_" in raw_comp_param:
         parts = raw_comp_param.rsplit('_', 1)
         provided_id, provided_code = parts[0], parts[1]
@@ -245,10 +242,12 @@ elif role == "manager":
     comp = next((c for c in comps if generate_comp_id(c) == provided_id and c.get('access_code') == provided_code), None)
     
     if comp:
-        full_title = get_comp_display_name(comp)
-        st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>Manage: {full_title}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>Manage: {get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
+        # Date/Time for Manager
+        match_dt = f"📅 {comp.get('match_date', 'TBD')}"
+        if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
+        st.markdown(f"<p style='text-align: center; color: #555; font-size: 14px;'>{match_dt}</p>", unsafe_allow_html=True)
         
-        # Sort pairings by display_order
         comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], 
                                key=lambda x: x.get('display_order', 0))
         
@@ -259,8 +258,7 @@ elif role == "manager":
         st.markdown(f"<div style='text-align: center; margin-bottom: 20px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold; font-size: 12px;'>{status}</span></div>", unsafe_allow_html=True)
         st.divider()
         
-        if not comp_pairings:
-            st.info("No matches added to this competition yet.")
+        if not comp_pairings: st.info("No matches added to this competition yet.")
             
         for i, p in enumerate(comp_pairings, start=1):
             st.markdown(f"<div style='text-align:center; font-size:12px; color:gray;'>Match {i}</div>", unsafe_allow_html=True)
@@ -277,7 +275,6 @@ elif role == "manager":
                     supabase.table("pairings").update({
                         "hole": h, "score": sc, "status": "FINISHED" if fin else "LIVE", "leader": new_leader
                     }).eq("id", p['id']).execute()
-                    
                     fetch_all.clear() 
                     st.success("Updated!"); time.sleep(1.5); st.rerun()
             st.divider()
@@ -291,14 +288,19 @@ elif role == "admin":
 
     if not st.session_state.admin_auth:
         st.markdown("<h2 style='text-align: center;'>Admin Login</h2>", unsafe_allow_html=True)
-        pwd = st.text_input("Enter Admin Password", type="password")
-        if st.button("Login", use_container_width=True):
-            correct_password = st.secrets.get("ADMIN_PASSWORD", "landb1909")
-            if pwd == correct_password:
-                st.session_state.admin_auth = True
-                st.rerun()
-            else:
-                st.error("Incorrect password")
+        
+        # Use a form to capture "Enter" key presses
+        with st.form("admin_login_form"):
+            pwd = st.text_input("Enter Admin Password", type="password")
+            submit_button = st.form_submit_button("Login", use_container_width=True)
+            
+            if submit_button:
+                correct_password = st.secrets.get("ADMIN_PASSWORD", "landb1909")
+                if pwd == correct_password:
+                    st.session_state.admin_auth = True
+                    st.rerun()
+                else:
+                    st.error("Incorrect password")
     else:
         st.header("Admin Console")
         if st.button("Logout of Admin"):
@@ -331,12 +333,16 @@ elif role == "admin":
                         time_string = new_start_time.strftime("%H:%M") if new_start_time else None
                         round_val = new_round if new_round.strip() else None
                         
+                        # EXTRACT YEAR
+                        match_year = new_date.year
+
                         supabase.table('competitions').insert({
                             "comp_name": new_comp_name, 
                             "category": new_category,
                             "opposition_team": new_opp_team, 
                             "round": round_val,
                             "match_date": str(new_date),
+                            "year": match_year,
                             "start_time": time_string,
                             "hide_mins": new_hide_mins,
                             "archived": False,
@@ -387,10 +393,13 @@ elif role == "admin":
                             updated_time_str = e_time.strftime("%H:%M") if e_time else None
                             updated_round_str = e_round if e_round.strip() else None
                             
+                            # EXTRACT YEAR
+                            updated_year = e_date.year
+
                             try:
                                 supabase.table('competitions').update({
                                     "comp_name": e_name, "category": e_cat, "opposition_team": e_opp, 
-                                    "round": updated_round_str, "match_date": str(e_date), "start_time": updated_time_str,
+                                    "round": updated_round_str, "match_date": str(e_date), "year": updated_year, "start_time": updated_time_str,
                                     "hide_mins": e_hide_mins, "archived": e_archived
                                 }).eq('id', c_data['id']).execute()
                                 
