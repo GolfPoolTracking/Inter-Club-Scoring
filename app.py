@@ -231,8 +231,21 @@ if role == "public":
 
 # --- VIEW 2: MANAGER PORTAL ---
 elif role == "manager":
-    selected_comp_id = query_params.get("comp", "")
-    comp = next((c for c in comps if generate_comp_id(c) == selected_comp_id), None)
+    # Get the raw string from the URL, e.g., "Mens_Test_Test_py9dq8"
+    raw_comp_param = query_params.get("comp", "")
+    
+    # 1. Split the parameter to extract the access code (the part after the last underscore)
+    if "_" in raw_comp_param:
+        parts = raw_comp_param.rsplit('_', 1)
+        provided_id = parts[0]       # e.g., "Mens_Test_Test"
+        provided_code = parts[1]     # e.g., "py9dq8"
+    else:
+        provided_id = raw_comp_param
+        provided_code = None
+
+    # 2. Find the competition that matches BOTH the ID AND the access code
+    # We use .get('access_code') to safely check against the database value
+    comp = next((c for c in comps if generate_comp_id(c) == provided_id and c.get('access_code') == provided_code), None)
     
     if comp:
         full_title = get_comp_display_name(comp)
@@ -265,10 +278,10 @@ elif role == "manager":
                     }).eq("id", p['id']).execute()
                     
                     fetch_all.clear() 
-                    st.success("Updated!"); time.sleep(5); st.rerun()
+                    st.success("Updated!"); time.sleep(1.5); st.rerun()
             st.divider()
     else:
-        st.error("Invalid Manager Link. Competition not found.")
+        st.error("Invalid Manager Link. Competition not found or access code is incorrect.")
 
 # --- VIEW 3: ADMIN CONSOLE ---
 elif role == "admin":
@@ -330,7 +343,7 @@ elif role == "admin":
                         }).execute()
                         
                         fetch_all.clear() 
-                        st.success(f"Created {new_category} {new_comp_name}!"); time.sleep(5); st.rerun()
+                        st.success(f"Created {new_category} {new_comp_name}!"); time.sleep(3); st.rerun()
                     else:
                         st.error("Please fill out Name and Opposition.")
                         
@@ -381,7 +394,7 @@ elif role == "admin":
                                 }).eq('id', c_data['id']).execute()
                                 
                                 fetch_all.clear()
-                                st.success("Updated!"); time.sleep(5); st.rerun()
+                                st.success("Updated!"); time.sleep(3); st.rerun()
                             except Exception as e:
                                 st.error(f"Database Error: {e}")
                                 
@@ -391,7 +404,7 @@ elif role == "admin":
                             supabase.table('competitions').delete().eq('id', c_data['id']).execute()
                             fetch_all.clear()
                             st.success("Deleted.")
-                            time.sleep(5)
+                            time.sleep(3)
                             st.rerun()
                 else:
                     st.info(f"No {filter_cat} competitions found.")
@@ -427,7 +440,7 @@ elif role == "admin":
                                 }).execute()
                                 
                                 fetch_all.clear()
-                                st.success("Match added!"); time.sleep(5); st.rerun()
+                                st.success("Match added!"); time.sleep(3); st.rerun()
                             else:
                                 st.error("Please enter both player names.")
                 else:
@@ -462,7 +475,7 @@ elif role == "admin":
                                 }).eq('id', p_data['id']).execute()
                                 
                                 fetch_all.clear() 
-                                st.success("Updated!"); time.sleep(5); st.rerun()
+                                st.success("Updated!"); time.sleep(3); st.rerun()
                         
                                 
                         # Confirmation popover before deleting a match
@@ -472,7 +485,7 @@ elif role == "admin":
                                 supabase.table('pairings').delete().eq('id', p_data['id']).execute()
                                 fetch_all.clear()
                                 st.success("Deleted.")
-                                time.sleep(5)
+                                time.sleep(3)
                                 st.rerun()
                     else:
                         st.info("No matches in this competition.")
