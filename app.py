@@ -456,11 +456,18 @@ elif role == "admin":
                                 
                                 fetch_all.clear() 
                                 st.success("Updated!"); time.sleep(1.5); st.rerun()
+                        
                                 
-                        if st.button("🚨 Delete Match 🚨", type="primary"):
-                            supabase.table('pairings').delete().eq('id', p_data['id']).execute()
-                            fetch_all.clear()
-                            st.success("Deleted."); time.sleep(1.5); st.rerun()
+                        # Confirmation popover before deleting a match
+                        with st.popover("🚨 Delete Match 🚨", use_container_width=True):
+                            st.warning("Are you sure? This action cannot be undone.")
+    
+                            if st.button("Confirm Delete Match", type="primary"):
+                                supabase.table('pairings').delete().eq('id', p_data['id']).execute()
+                                fetch_all.clear()
+                                st.success("Deleted.")
+                                time.sleep(1.5)
+                                st.rerun()
                     else:
                         st.info("No matches in this competition.")
                 else:
