@@ -66,7 +66,12 @@ def calculate_overall_score(pairings):
             if p["leader"] == "L&B": lb += 1.0
             elif p["leader"] == "Opposition": opp += 1.0
             else: lb += 0.5; opp += 0.5
-    return lb, opp
+            
+    # Format scores to remove .0 for whole numbers
+    lb_display = int(lb) if lb.is_integer() else lb
+    opp_display = int(opp) if opp.is_integer() else opp
+    
+    return lb_display, opp_display
 
 def safe_index(lst, val): return lst.index(val) if val in lst else 0
 
@@ -78,6 +83,14 @@ def safe_time_parse(time_str):
         except ValueError:
             pass
     return None
+
+def format_date_display(date_string):
+    if not date_string or date_string == 'TBD': 
+        return 'TBD'
+    try:
+        return datetime.strptime(date_string, "%Y-%m-%d").strftime("%d-%m-%Y")
+    except ValueError:
+        return date_string
 
 def should_hide_names(comp):
     """Calculates if the current time is before the reveal window."""
@@ -211,7 +224,7 @@ if role == "public":
             
             # Header with Date and Time
             st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-bottom: 2px;'>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
-            match_dt = f"📅 {comp.get('match_date', 'TBD')}"
+            match_dt = f"📅 {format_date_display(comp.get('match_date', 'TBD'))}"
             if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
             st.markdown(f"<p style='text-align: center; color: #555; font-size: 14px;'>{match_dt}</p>", unsafe_allow_html=True)
             
@@ -244,7 +257,7 @@ elif role == "manager":
     if comp:
         st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>Manage: {get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
         # Date/Time for Manager
-        match_dt = f"📅 {comp.get('match_date', 'TBD')}"
+        match_dt = f"📅 {format_date_display(comp.get('match_date', 'TBD'))}"
         if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
         st.markdown(f"<p style='text-align: center; color: #555; font-size: 14px;'>{match_dt}</p>", unsafe_allow_html=True)
         
@@ -341,7 +354,7 @@ elif role == "admin":
                             "category": new_category,
                             "opposition_team": new_opp_team, 
                             "round": round_val,
-                            "match_date": str(new_date),
+                            "match_date": str(new_date), # Keeping YYYY-MM-DD for database storage
                             "year": match_year,
                             "start_time": time_string,
                             "hide_mins": new_hide_mins,
