@@ -162,7 +162,7 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
 HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
 SCORE_OPTIONS = [f"{i} Up" for i in range(10, 0, -1)] + ["All Square"] + [f"{i} Down" for i in range(1, 11)]
 VENUE_OPTIONS = ["Home", "Away"]
-CATEGORY_OPTIONS = ["Mens", "Womens", "Boys", "Mixed"]
+CATEGORY_OPTIONS = ["Mens", "Womens", "Boys", "Girls", "Mixed"]
 
 # --- DATA FETCHING ---
 @st.cache_data(ttl=10)
