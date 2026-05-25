@@ -202,8 +202,9 @@ if role == "public":
             st.info("No competitions match your filters.")
             
         for comp in filtered_comps:
-            comp_pairings = [p for p in pairings if p["competition_id"] == comp["id"]]
-            comp_pairings = sorted(comp_pairings, key=lambda x: x.get('display_order', 0))
+            # Sort pairings by display_order
+            comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], 
+                                   key=lambda x: x.get('display_order', 0))
             
             lb, opp = calculate_overall_score(comp_pairings)
             status = get_comp_status(comp_pairings)
@@ -222,7 +223,9 @@ if role == "public":
             with st.expander(f"View Pairings (Last updated: {datetime.now(ireland_tz).strftime('%H:%M')})"):
                 if not comp_pairings:
                     st.write("Pairings to be announced.")
-                for p in comp_pairings:
+                for i, p in enumerate(comp_pairings, start=1):
+                    # Using match index 'i' in pairing
+                    st.markdown(f"<div style='text-align:center; font-size:12px; color:gray;'>Match {i}</div>", unsafe_allow_html=True)
                     st.markdown(generate_pairing_html(p, "public", hide_names, reveal_time, show_venue=True), unsafe_allow_html=True)
                     st.write("---")
             st.divider()
@@ -231,26 +234,23 @@ if role == "public":
 
 # --- VIEW 2: MANAGER PORTAL ---
 elif role == "manager":
-    # Get the raw string from the URL, e.g., "Mens_Test_Test_py9dq8"
     raw_comp_param = query_params.get("comp", "")
     
-    # 1. Split the parameter to extract the access code (the part after the last underscore)
     if "_" in raw_comp_param:
         parts = raw_comp_param.rsplit('_', 1)
-        provided_id = parts[0]       # e.g., "Mens_Test_Test"
-        provided_code = parts[1]     # e.g., "py9dq8"
+        provided_id, provided_code = parts[0], parts[1]
     else:
-        provided_id = raw_comp_param
-        provided_code = None
+        provided_id, provided_code = raw_comp_param, None
 
-    # 2. Find the competition that matches BOTH the ID AND the access code
-    # We use .get('access_code') to safely check against the database value
     comp = next((c for c in comps if generate_comp_id(c) == provided_id and c.get('access_code') == provided_code), None)
     
     if comp:
         full_title = get_comp_display_name(comp)
         st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>Manage: {full_title}</h3>", unsafe_allow_html=True)
-        comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], key=lambda x: x['id'])
+        
+        # Sort pairings by display_order
+        comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], 
+                               key=lambda x: x.get('display_order', 0))
         
         lb, opp = calculate_overall_score(comp_pairings)
         status = get_comp_status(comp_pairings)
@@ -262,10 +262,11 @@ elif role == "manager":
         if not comp_pairings:
             st.info("No matches added to this competition yet.")
             
-        for p in comp_pairings:
+        for i, p in enumerate(comp_pairings, start=1):
+            st.markdown(f"<div style='text-align:center; font-size:12px; color:gray;'>Match {i}</div>", unsafe_allow_html=True)
             st.markdown(generate_pairing_html(p, "manager", hide_names=False), unsafe_allow_html=True)
             
-            with st.expander(f"Update: {p['landb_player']} vs {p['opposition_player']}", expanded=False):
+            with st.expander(f"Update Match {i}: {p['landb_player']} vs {p['opposition_player']}", expanded=False):
                 uc1, uc2 = st.columns(2)
                 h = uc1.selectbox("Hole", HOLE_OPTIONS, index=safe_index(HOLE_OPTIONS, str(p['hole'])), key=f"h_{p['id']}")
                 sc = uc2.selectbox("Score (Relative to L&B)", SCORE_OPTIONS, index=safe_index(SCORE_OPTIONS, p['score']), key=f"sc_{p['id']}")
@@ -432,19 +433,24 @@ elif role == "admin":
                         
                         if st.form_submit_button("Add Match Pairing"):
                             if lb_player_input and opp_player_input:
+                                target_comp_id = comp_names_dict_add[target_comp_title]
+                                # Get existing matches to find next display_order
+                                existing = [p for p in pairings if p["competition_id"] == target_comp_id]
+                                next_order = (max([p.get('display_order', 0) for p in existing], default=0)) + 1
+                                
                                 supabase.table('pairings').insert({
-                                    "competition_id": comp_names_dict_add[target_comp_title],
-                                    "landb_player": lb_player_input, "opposition_player": opp_player_input,
+                                    "competition_id": target_comp_id,
+                                    "landb_player": lb_player_input, 
+                                    "opposition_player": opp_player_input,
                                     "venue": match_venue, "hole": "1", "score": "All Square",
-                                    "status": "Not Started", "leader": "Tied"
+                                    "status": "Not Started", "leader": "Tied",
+                                    "display_order": next_order
                                 }).execute()
                                 
                                 fetch_all.clear()
-                                st.success("Match added!"); time.sleep(3); st.rerun()
+                                st.success("Match added!"); time.sleep(1.5); st.rerun()
                             else:
-                                st.error("Please enter both player names.")
-                else:
-                    st.info(f"No {filter_cat_add} competitions found.")
+                                st.error("Please enter both player names.") 
         
 # --- TAB 4: EDIT MATCH ---
 with tab4:
