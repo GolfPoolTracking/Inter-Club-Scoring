@@ -50,9 +50,14 @@ div[data-baseweb="select"] > div {
     border-radius: 8px !important;
 }
 
-/* CRITICAL FIX: Prevent Mobile Keyboard Popup on Selectboxes */
+/* CRITICAL FIX v2: Completely hide the underlying text input. 
+   If it is display:none, React cannot focus it, and iOS won't pop the keyboard. */
 div[data-baseweb="select"] input {
-    pointer-events: none !important;
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    opacity: 0 !important;
+    position: absolute !important;
 }
 
 /* Mobile Optimization: Fat-finger friendly buttons */
