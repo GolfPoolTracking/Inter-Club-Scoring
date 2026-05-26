@@ -8,6 +8,7 @@ import urllib.parse
 import base64
 import random
 import string
+import streamlit.components.v1 as components
 
 # --- Random code generator for unique keys ---
 def generate_random_code(length=6):
@@ -15,6 +16,30 @@ def generate_random_code(length=6):
 
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
+
+# --- CRITICAL FIX v3: JAVASCRIPT KEYBOARD BLOCKER ---
+# This script constantly watches for Streamlit selectboxes and forces them to be read-only
+# so iOS Safari cannot pop the virtual keyboard when they are tapped.
+components.html(
+    """
+    <script>
+    if (window.parent && window.parent.document) {
+        const observer = new MutationObserver(function(mutations) {
+            const inputs = window.parent.document.querySelectorAll('div[data-baseweb="select"] input');
+            inputs.forEach(function(input) {
+                if (!input.hasAttribute('readonly')) {
+                    input.setAttribute('inputmode', 'none');
+                    input.setAttribute('readonly', 'true');
+                }
+            });
+        });
+        observer.observe(window.parent.document.body, { childList: true, subtree: true });
+    }
+    </script>
+    """,
+    height=0,
+    width=0
+)
 
 # Inject Mobile-Optimized CSS, Meta Tags, and Noto Serif font safely
 st.markdown("""
@@ -50,14 +75,9 @@ div[data-baseweb="select"] > div {
     border-radius: 8px !important;
 }
 
-/* CRITICAL FIX v2: Completely hide the underlying text input. 
-   If it is display:none, React cannot focus it, and iOS won't pop the keyboard. */
+/* Fallback: Hide the blinking cursor so it doesn't look like a text field */
 div[data-baseweb="select"] input {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
-    opacity: 0 !important;
-    position: absolute !important;
+    caret-color: transparent !important;
 }
 
 /* Mobile Optimization: Fat-finger friendly buttons */
