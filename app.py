@@ -94,7 +94,10 @@ def format_date_display(date_string):
         return date_string
 
 def should_hide_names(comp):
-    """Calculates if the current time is before the reveal window."""
+    """Calculates if names should be hidden based on the 'always_hide' flag or the reveal window."""
+    if comp.get('always_hide_names', False):
+        return True, None
+        
     hide_mins = comp.get('hide_mins')
     if hide_mins is None or int(hide_mins) <= 0: return False, None
     if not comp.get('match_date') or not comp.get('start_time'): return False, None
@@ -125,13 +128,18 @@ def generate_comp_id(comp):
 def generate_scoreboard_html(lb_score, opp_score, opp_team_name):
     return f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto;'><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>L&B</div><div style='background-color: {LB_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{lb_score}</div></div><div style='flex: 1; text-align: center; font-size: 35px; font-weight: bold; padding-top: 25px;'>:</div><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>{opp_team_name}</div><div style='background-color: {OPP_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{opp_score}</div></div></div>"
 
-def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=None, show_venue=False):
-    if hide_names and reveal_time:
-        lb_name_display = f"Reveals {reveal_time.strftime('%H:%M')}"
-        opp_name_display = "TBD"
+def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=None, show_venue=False, match_index=1):
+    # Only hide L&B player if the hide_names flag is true
+    if hide_names:
+        if reveal_time:
+            lb_name_display = f"Reveals {reveal_time.strftime('%H:%M')}"
+        else:
+            lb_name_display = f"Match {match_index} (Name Hidden)"
     else:
         lb_name_display = p.get('landb_player', 'TBD')
-        opp_name_display = p.get('opposition_player', 'TBD')
+        
+    # Opposition player is never hidden per new rules
+    opp_name_display = p.get('opposition_player', 'TBD')
 
     is_started = p['status'] in ["LIVE", "FINISHED"]
     tied_text = "&nbsp;" if is_started else "ALL SQUARE"
@@ -249,7 +257,7 @@ if role == "public":
                     st.write("Pairings to be announced.")
                 for i, p in enumerate(comp_pairings, start=1):
                     st.markdown(f"<div style='text-align:center; font-size:12px; color:gray;'>Match {i}</div>", unsafe_allow_html=True)
-                    st.markdown(generate_pairing_html(p, "public", hide_names, reveal_time, show_venue=True), unsafe_allow_html=True)
+                    st.markdown(generate_pairing_html(p, "public", hide_names, reveal_time, show_venue=True, match_index=i), unsafe_allow_html=True)
                     st.write("---")
             st.divider()
     else:
@@ -286,7 +294,7 @@ elif role == "manager":
             
         for i, p in enumerate(comp_pairings, start=1):
             st.markdown(f"<div style='text-align:center; font-size:12px; color:gray;'>Match {i}</div>", unsafe_allow_html=True)
-            st.markdown(generate_pairing_html(p, "manager", hide_names=False), unsafe_allow_html=True)
+            st.markdown(generate_pairing_html(p, "manager", hide_names=False, match_index=i), unsafe_allow_html=True)
             
             with st.expander(f"Update Match {i}: {p['landb_player']} vs {p['opposition_player']}", expanded=False):
                 uc1, uc2 = st.columns(2)
@@ -356,6 +364,7 @@ elif role == "admin":
                     new_start_time = col4.time_input("Start Time (Optional)", value=None)
                     
                     new_hide_mins = st.number_input("Hide Player Names Until (Mins before start)", min_value=0, value=60, step=15)
+                    new_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=False)
                     
                     if st.form_submit_button("Create Competition"):
                         if new_opp_team:
@@ -374,6 +383,7 @@ elif role == "admin":
                                 "year": match_year,
                                 "start_time": time_string,
                                 "hide_mins": new_hide_mins,
+                                "always_hide_names": new_always_hide,
                                 "archived": False,
                                 "access_code": secure_access_code  
                             }).execute()
@@ -424,6 +434,7 @@ elif role == "admin":
                         hide_val = c_data.get('hide_mins')
                         hide_val = int(hide_val) if hide_val is not None else 60
                         e_hide_mins = st.number_input("Hide Player Names Until (Mins before)", min_value=0, value=hide_val, step=15)
+                        e_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=c_data.get('always_hide_names', False))
                         e_archived = st.checkbox("Archive Competition (Hide from Public)", value=c_data.get('archived', False))
                         
                         if st.form_submit_button("Update Competition"):
@@ -436,7 +447,7 @@ elif role == "admin":
                                 supabase.table('competitions').update({
                                     "comp_name": e_name, "category": e_cat, "opposition_team": e_opp, 
                                     "round": updated_round_str, "match_date": str(e_date), "year": updated_year, "start_time": updated_time_str,
-                                    "hide_mins": e_hide_mins, "archived": e_archived
+                                    "hide_mins": e_hide_mins, "always_hide_names": e_always_hide, "archived": e_archived
                                 }).eq('id', c_data['id']).execute()
                                 
                                 fetch_all.clear()
