@@ -17,23 +17,44 @@ def generate_random_code(length=6):
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CRITICAL FIX v3: JAVASCRIPT KEYBOARD BLOCKER ---
-# This script constantly watches for Streamlit selectboxes and forces them to be read-only
-# so iOS Safari cannot pop the virtual keyboard when they are tapped.
+# --- CRITICAL FIX v4: JAVASCRIPT KEYBOARD BLOCKER & TOGGLE FIX ---
+# Watches for Selectboxes, Date Inputs, and Time Inputs and forces them to be read-only.
+# Also adds a listener so tapping an open dropdown forces it to close.
 components.html(
     """
     <script>
     if (window.parent && window.parent.document) {
+        const doc = window.parent.document;
+        
+        // 1. Prevent keyboard popups on Select, Date, and Time inputs
         const observer = new MutationObserver(function(mutations) {
-            const inputs = window.parent.document.querySelectorAll('div[data-baseweb="select"] input');
+            const inputs = doc.querySelectorAll('div[data-baseweb="select"] input, div[data-testid="stDateInput"] input, div[data-testid="stTimeInput"] input');
             inputs.forEach(function(input) {
-                if (!input.hasAttribute('readonly')) {
+                if (input.getAttribute('inputmode') !== 'none') {
                     input.setAttribute('inputmode', 'none');
                     input.setAttribute('readonly', 'true');
+                    input.style.caretColor = 'transparent'; // hide blinking cursor
                 }
             });
         });
-        observer.observe(window.parent.document.body, { childList: true, subtree: true });
+        observer.observe(doc.body, { childList: true, subtree: true });
+
+        // 2. Allow collapsing the dropdown by clicking the dropdown box/arrow again
+        doc.addEventListener('pointerdown', function(e) {
+            const selectContainer = e.target.closest('div[data-baseweb="select"]');
+            if (selectContainer) {
+                const input = selectContainer.querySelector('input');
+                // Check if the dropdown is currently open before this click is processed
+                if (input && input.getAttribute('aria-expanded') === 'true') {
+                    // Force close it by removing focus just after the native click fires
+                    setTimeout(() => {
+                        if (doc.activeElement) {
+                            doc.activeElement.blur();
+                        }
+                    }, 50);
+                }
+            }
+        }, true); // Capture phase to intercept reliably
     }
     </script>
     """,
@@ -73,11 +94,6 @@ div[data-baseweb="select"] > div {
     min-height: 55px !important;
     font-size: 16px !important;
     border-radius: 8px !important;
-}
-
-/* Fallback: Hide the blinking cursor so it doesn't look like a text field */
-div[data-baseweb="select"] input {
-    caret-color: transparent !important;
 }
 
 /* Mobile Optimization: Fat-finger friendly buttons */
