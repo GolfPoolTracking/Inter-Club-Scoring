@@ -17,9 +17,9 @@ def generate_random_code(length=6):
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CRITICAL FIX v4: JAVASCRIPT KEYBOARD BLOCKER & TOGGLE FIX ---
+# --- CRITICAL FIX v4.1: JAVASCRIPT KEYBOARD BLOCKER & TOGGLE FIX ---
 # Watches for Selectboxes, Date Inputs, and Time Inputs and forces them to be read-only.
-# Also adds a listener so tapping an open dropdown forces it to close.
+# Also adds a listener to ALL of them so tapping an open dropdown/calendar forces it to close.
 components.html(
     """
     <script>
@@ -39,12 +39,12 @@ components.html(
         });
         observer.observe(doc.body, { childList: true, subtree: true });
 
-        // 2. Allow collapsing the dropdown by clicking the dropdown box/arrow again
+        // 2. Allow collapsing Select, Date, and Time dropdowns by clicking them again
         doc.addEventListener('pointerdown', function(e) {
-            const selectContainer = e.target.closest('div[data-baseweb="select"]');
-            if (selectContainer) {
-                const input = selectContainer.querySelector('input');
-                // Check if the dropdown is currently open before this click is processed
+            const inputContainer = e.target.closest('div[data-baseweb="select"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"]');
+            if (inputContainer) {
+                const input = inputContainer.querySelector('input');
+                // Check if the dropdown/calendar is currently open
                 if (input && input.getAttribute('aria-expanded') === 'true') {
                     // Force close it by removing focus just after the native click fires
                     setTimeout(() => {
