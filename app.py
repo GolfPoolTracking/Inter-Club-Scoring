@@ -50,6 +50,11 @@ div[data-baseweb="select"] > div {
     border-radius: 8px !important;
 }
 
+/* CRITICAL FIX: Prevent Mobile Keyboard Popup on Selectboxes */
+div[data-baseweb="select"] input {
+    pointer-events: none !important;
+}
+
 /* Mobile Optimization: Fat-finger friendly buttons */
 .stButton > button {
     min-height: 55px !important;
