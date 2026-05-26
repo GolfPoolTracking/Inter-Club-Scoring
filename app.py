@@ -17,9 +17,9 @@ def generate_random_code(length=6):
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CRITICAL FIX v4.1: JAVASCRIPT KEYBOARD BLOCKER & TOGGLE FIX ---
+# --- CRITICAL FIX v5: JAVASCRIPT KEYBOARD BLOCKER & DATE TOGGLE FIX ---
 # Watches for Selectboxes, Date Inputs, and Time Inputs and forces them to be read-only.
-# Also adds a listener to ALL of them so tapping an open dropdown/calendar forces it to close.
+# Also adds a focus-based listener so tapping an open calendar/dropdown forces it to close.
 components.html(
     """
     <script>
@@ -39,19 +39,25 @@ components.html(
         });
         observer.observe(doc.body, { childList: true, subtree: true });
 
-        // 2. Allow collapsing Select, Date, and Time dropdowns by clicking them again
+        // 2. Allow collapsing Select, Date, and Time dropdowns by clicking the box again
         doc.addEventListener('pointerdown', function(e) {
             const inputContainer = e.target.closest('div[data-baseweb="select"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"]');
             if (inputContainer) {
                 const input = inputContainer.querySelector('input');
-                // Check if the dropdown/calendar is currently open
-                if (input && input.getAttribute('aria-expanded') === 'true') {
-                    // Force close it by removing focus just after the native click fires
-                    setTimeout(() => {
-                        if (doc.activeElement) {
-                            doc.activeElement.blur();
-                        }
-                    }, 50);
+                if (input) {
+                    // Streamlit date pickers don't consistently use aria-expanded.
+                    // Checking if the input is already the active/focused element catches all scenarios.
+                    const isExpanded = input.getAttribute('aria-expanded') === 'true';
+                    const isFocused = (doc.activeElement === input);
+                    
+                    if (isExpanded || isFocused) {
+                        // Force close it by stripping focus just after the native click fires
+                        setTimeout(() => {
+                            if (doc.activeElement) {
+                                doc.activeElement.blur();
+                            }
+                        }, 50);
+                    }
                 }
             }
         }, true); // Capture phase to intercept reliably
