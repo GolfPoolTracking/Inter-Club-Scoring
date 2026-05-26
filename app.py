@@ -16,15 +16,64 @@ def generate_random_code(length=6):
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# Inject Noto Serif font safely and hide default menus
+# Inject Mobile-Optimized CSS, Meta Tags, and Noto Serif font safely
 st.markdown("""
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0D4722">
+
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap');
+
+/* Base Font */
 div, p, h1, h2, h3, h4, h5, h6, .stMarkdown, .stButton, .stRadio, .stCheckbox { 
     font-family: 'Noto Serif', serif !important; 
 }
+
+/* Hide Streamlit Chrome */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
+header {visibility: hidden;}
+
+/* Mobile Optimization: Prevent accidental text highlighting when double-tapping */
+body {
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+/* Mobile Optimization: Massive Touch Targets for Dropdowns */
+div[data-baseweb="select"] > div {
+    min-height: 55px !important;
+    font-size: 16px !important;
+    border-radius: 8px !important;
+}
+
+/* Mobile Optimization: Fat-finger friendly buttons */
+.stButton > button {
+    min-height: 55px !important;
+    font-size: 18px !important;
+    font-weight: bold !important;
+    border-radius: 8px !important;
+}
+
+/* Mobile Optimization: Larger Checkboxes */
+div[data-testid="stCheckbox"] label span {
+    font-size: 16px !important;
+    padding-top: 2px !important;
+}
+div[data-testid="stCheckbox"] div[role="checkbox"] {
+    height: 24px !important;
+    width: 24px !important;
+}
+
+/* Mobile Optimization: Taller Expanders */
+.streamlit-expanderHeader {
+    min-height: 60px !important;
+    font-size: 16px !important;
+    font-weight: 700 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -126,15 +175,15 @@ def generate_comp_id(comp):
 
 # --- HTML GENERATORS ---
 def generate_scoreboard_html(lb_score, opp_score, opp_team_name):
-    return f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto;'><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>L&B</div><div style='background-color: {LB_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{lb_score}</div></div><div style='flex: 1; text-align: center; font-size: 35px; font-weight: bold; padding-top: 25px;'>:</div><div style='flex: 2; text-align: center; padding: 0 10px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 16px;'>{opp_team_name}</div><div style='background-color: {OPP_COLOR}; color: white; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 24px;'>{opp_score}</div></div></div>"
+    return f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto;'><div style='flex: 2; text-align: center; padding: 0 5px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 15px;'>L&B</div><div style='background-color: {LB_COLOR}; color: white; padding: 15px 5px; border-radius: 8px; font-weight: bold; font-size: 28px;'>{lb_score}</div></div><div style='flex: 1; text-align: center; font-size: 35px; font-weight: bold; padding-top: 25px;'>:</div><div style='flex: 2; text-align: center; padding: 0 5px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 15px;'>{opp_team_name}</div><div style='background-color: {OPP_COLOR}; color: white; padding: 15px 5px; border-radius: 8px; font-weight: bold; font-size: 28px;'>{opp_score}</div></div></div>"
 
 def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=None, show_venue=False, match_index=1):
     # Only hide L&B player if the hide_names flag is true
     if hide_names:
         if reveal_time:
-            lb_name_display = f"Reveals {reveal_time.strftime('%H:%M')}"
+            lb_name_display = f"Reveals<br>{reveal_time.strftime('%H:%M')}"
         else:
-            lb_name_display = f"Match {match_index} (Name Hidden)"
+            lb_name_display = f"Match {match_index}<br>(Name Hidden)"
     else:
         lb_name_display = p.get('landb_player', 'TBD')
         
@@ -145,32 +194,32 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
     tied_text = "&nbsp;" if is_started else "ALL SQUARE"
 
     if p['leader'] == 'L&B':
-        lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{p['score']}</div>"
+        lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px;'>{p['score']}</div>"
     elif p['leader'] == 'Tied':
-        lb_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{tied_text}</div>"
+        lb_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px;'>{tied_text}</div>"
     else:
-        lb_score_html = f"<div style='padding: 4px; visibility: hidden;'>Spacer</div>"
+        lb_score_html = f"<div style='padding: 6px; visibility: hidden;'>Spacer</div>"
         
     if p['leader'] == 'Opposition':
-        opp_score_html = f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{p['score'].replace('Down', 'Up')}</div>"
+        opp_score_html = f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px;'>{p['score'].replace('Down', 'Up')}</div>"
     elif p['leader'] == 'Tied':
-        opp_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 4px; font-weight: bold; border-radius: 3px;'>{tied_text}</div>"
+        opp_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px;'>{tied_text}</div>"
     else:
-        opp_score_html = f"<div style='padding: 4px; visibility: hidden;'>Spacer</div>"
+        opp_score_html = f"<div style='padding: 6px; visibility: hidden;'>Spacer</div>"
         
     hole_val = str(p.get('hole', '1'))
     hole_display = f"Hole {hole_val}" if hole_val.isdigit() else hole_val 
     p_status_color = "gray" if p['status'] == "Not Started" else ("darkred" if p['status'] == "FINISHED" else "#8bc34a")
     
     should_show = (view_mode == "manager") or show_venue
-    venue_html = f"<div style='font-size: 11px; color: gray; margin-top: 4px;'>📍 {p.get('venue', 'Unknown')}</div>" if should_show else ""
+    venue_html = f"<div style='font-size: 12px; color: gray; margin-top: 6px;'>📍 {p.get('venue', 'Unknown')}</div>" if should_show else ""
     
     # Conditionally display the hole only if the match has started
     hole_html = ""
     if p['status'] != "Not Started":
-        hole_html = f"<div style='background-color: black; color: white; padding: 2px; font-size: 13px; border-radius: 3px; margin-bottom: 4px;'>{hole_display}</div>"
+        hole_html = f"<div style='background-color: black; color: white; padding: 4px; font-size: 14px; font-weight: bold; border-radius: 4px; margin-bottom: 6px;'>{hole_display}</div>"
         
-    return f"<div style='display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 10px;'><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{lb_score_html}<div style='font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;'>{lb_name_display}</div>{venue_html}</div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{hole_html}<div style='background-color: {p_status_color}; color: white; padding: 2px; font-size: 11px; font-weight: bold; border-radius: 3px;'>{p['status']}</div></div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{opp_score_html}<div style='font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;'>{opp_name_display}</div></div></div>"
+    return f"<div style='display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 15px;'><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{lb_score_html}<div style='font-weight: bold; font-size: 16px; margin-top: 8px; line-height: 1.3;'>{lb_name_display}</div>{venue_html}</div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%; margin-top: 2px;'>{hole_html}<div style='background-color: {p_status_color}; color: white; padding: 4px; font-size: 12px; font-weight: bold; border-radius: 4px;'>{p['status']}</div></div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{opp_score_html}<div style='font-weight: bold; font-size: 16px; margin-top: 8px; line-height: 1.3;'>{opp_name_display}</div></div></div>"
 
 # --- LIST DEFINITIONS ---
 HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
@@ -207,7 +256,7 @@ role = query_params.get("role", "public")
 # --- VIEW 1: PUBLIC SCOREBOARD ---
 if role == "public":
     logo_base64 = get_base64_image("app/static/lb_logo.png") or get_base64_image("static/lb_logo.png")
-    logo_html = f'<img src="data:image/png;base64,{logo_base64}" width="120" style="margin-bottom: 5px;"/>' if logo_base64 else ""
+    logo_html = f'<img src="data:image/png;base64,{logo_base64}" width="120" style="margin-bottom: 10px; margin-top: 15px;"/>' if logo_base64 else ""
 
     st.markdown(f"<div style='text-align: center;'>{logo_html}<h2 style='font-weight: 700; margin-top: 0px;'>L&B Match Centre</h2></div>", unsafe_allow_html=True)
     st.divider()
@@ -218,8 +267,10 @@ if role == "public":
         if st.button("↻ Refresh Scores", use_container_width=True): 
             fetch_all.clear()
             st.rerun()
-            
-        c_yr, c_cat = st.columns([1, 3])
+        
+        st.write("") # Mobile spacing
+        
+        c_yr, c_cat = st.columns([1, 2])
         with c_yr:
             public_years = sorted(list(set([c.get('year', datetime.now(ireland_tz).year) for c in active_comps if c.get('year')])), reverse=True)
             if not public_years: public_years = [datetime.now(ireland_tz).year]
@@ -243,22 +294,23 @@ if role == "public":
             status = get_comp_status(comp_pairings)
             hide_names, reveal_time = should_hide_names(comp)
             
-            st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-bottom: 2px;'>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
+            st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-bottom: 2px; margin-top: 30px;'>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
             match_dt = f"📅 {format_date_display(comp.get('match_date', 'TBD'))}"
             if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
-            st.markdown(f"<p style='text-align: center; color: #555; font-size: 14px;'>{match_dt}</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='text-align: center; color: #555; font-size: 15px;'>{match_dt}</p>", unsafe_allow_html=True)
             
-            st.markdown(f"<div style='text-align: center;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; margin-bottom: 15px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 6px 16px; border-radius: 6px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
             
             st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team']), unsafe_allow_html=True)
             
-            with st.expander(f"View Pairings (Last updated: {datetime.now(ireland_tz).strftime('%H:%M')})"):
+            with st.expander(f"View Pairings (Updated: {datetime.now(ireland_tz).strftime('%H:%M')})"):
                 if not comp_pairings:
                     st.write("Pairings to be announced.")
                 for i, p in enumerate(comp_pairings, start=1):
-                    st.markdown(f"<div style='text-align:center; font-size:12px; color:gray;'>Match {i}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='text-align:center; font-size:14px; font-weight: bold; color:gray; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
                     st.markdown(generate_pairing_html(p, "public", hide_names, reveal_time, show_venue=True, match_index=i), unsafe_allow_html=True)
-                    st.write("---")
+                    if i < len(comp_pairings):
+                        st.write("---")
             st.divider()
     else:
         st.info("No active competitions.")
@@ -275,10 +327,10 @@ elif role == "manager":
     comp = next((c for c in comps if generate_comp_id(c) == provided_id and c.get('access_code') == provided_code), None)
     
     if comp:
-        st.markdown(f"<h3 style='text-align: center; font-weight: 700;'>Manage: {get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-top: 15px;'>Manage:<br>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
         match_dt = f"📅 {format_date_display(comp.get('match_date', 'TBD'))}"
         if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
-        st.markdown(f"<p style='text-align: center; color: #555; font-size: 14px;'>{match_dt}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align: center; color: #555; font-size: 15px;'>{match_dt}</p>", unsafe_allow_html=True)
         
         comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], 
                                key=lambda x: x.get('display_order', 0))
@@ -286,29 +338,37 @@ elif role == "manager":
         lb, opp = calculate_overall_score(comp_pairings)
         status = get_comp_status(comp_pairings)
         
-        st.markdown(f"<p style='text-align: center; margin-bottom: 5px;'>Live Score: L&B <b>{lb}</b> - <b>{opp}</b> {comp['opposition_team']}</p>", unsafe_allow_html=True)
-        st.markdown(f"<div style='text-align: center; margin-bottom: 20px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold; font-size: 12px;'>{status}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align: center; margin-bottom: 8px; font-size: 18px;'>Live Score: L&B <b>{lb}</b> - <b>{opp}</b> {comp['opposition_team']}</p>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; margin-bottom: 25px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 6px 16px; border-radius: 6px; font-weight: bold; font-size: 14px;'>{status}</span></div>", unsafe_allow_html=True)
+        
+        if st.button("↻ Refresh Page", use_container_width=True):
+            fetch_all.clear()
+            st.rerun()
+            
         st.divider()
         
         if not comp_pairings: st.info("No matches added to this competition yet.")
             
         for i, p in enumerate(comp_pairings, start=1):
-            st.markdown(f"<div style='text-align:center; font-size:12px; color:gray;'>Match {i}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:center; font-size:14px; font-weight:bold; color:gray; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
             st.markdown(generate_pairing_html(p, "manager", hide_names=False, match_index=i), unsafe_allow_html=True)
             
-            with st.expander(f"Update Match {i}: {p['landb_player']} vs {p['opposition_player']}", expanded=False):
-                uc1, uc2 = st.columns(2)
-                h = uc1.selectbox("Hole", HOLE_OPTIONS, index=safe_index(HOLE_OPTIONS, str(p['hole'])), key=f"h_{p['id']}")
-                sc = uc2.selectbox("Score (Relative to L&B)", SCORE_OPTIONS, index=safe_index(SCORE_OPTIONS, p['score']), key=f"sc_{p['id']}")
-                fin = st.checkbox("Match Finished (Check to lock final score)", value=(p['status'] == "FINISHED"), key=f"fin_{p['id']}")
+            with st.expander(f"UPDATE MATCH {i} ({p['landb_player']})", expanded=False):
+                # Stacking inputs vertically slightly improves mobile touch accuracy over columns
+                h = st.selectbox("Hole", HOLE_OPTIONS, index=safe_index(HOLE_OPTIONS, str(p['hole'])), key=f"h_{p['id']}")
+                sc = st.selectbox("Score (Relative to L&B)", SCORE_OPTIONS, index=safe_index(SCORE_OPTIONS, p['score']), key=f"sc_{p['id']}")
                 
-                if st.button("Save Match Update", key=f"btn_{p['id']}", type="primary"):
+                st.write("")
+                fin = st.checkbox("Match Finished (Check to lock final score)", value=(p['status'] == "FINISHED"), key=f"fin_{p['id']}")
+                st.write("")
+                
+                if st.button("SAVE SCORE", key=f"btn_{p['id']}", type="primary", use_container_width=True):
                     new_leader = get_leader_from_score(sc)
                     supabase.table("pairings").update({
                         "hole": h, "score": sc, "status": "FINISHED" if fin else "LIVE", "leader": new_leader
                     }).eq("id", p['id']).execute()
                     fetch_all.clear() 
-                    st.success("Updated!"); time.sleep(1.5); st.rerun()
+                    st.success("Match Updated Successfully!"); time.sleep(1.5); st.rerun()
             st.divider()
     else:
         st.error("Invalid Manager Link. Competition not found or access code is incorrect.")
@@ -319,10 +379,11 @@ elif role == "admin":
         st.session_state.admin_auth = False
 
     if not st.session_state.admin_auth:
-        st.markdown("<h2 style='text-align: center;'>Admin Login</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; margin-top: 30px;'>Admin Login</h2>", unsafe_allow_html=True)
         
         with st.form("admin_login_form"):
             pwd = st.text_input("Enter Admin Password", type="password")
+            st.write("")
             submit_button = st.form_submit_button("Login", use_container_width=True)
             
             if submit_button:
@@ -340,7 +401,7 @@ elif role == "admin":
         with c2:
             st.write("") 
             st.write("") 
-            if st.button("Logout of Admin"):
+            if st.button("Logout", use_container_width=True):
                 st.session_state.admin_auth = False
                 st.rerun()
             
@@ -355,18 +416,17 @@ elif role == "admin":
                 m_data = master_opts[selected_master]
                 
                 with st.form("create_comp_form", clear_on_submit=True):
-                    col1, col2 = st.columns(2)
-                    new_opp_team = col1.text_input("Opposition Team")
-                    new_round = col2.selectbox("Round", ROUND_OPTIONS)
+                    new_opp_team = st.text_input("Opposition Team")
+                    new_round = st.selectbox("Round", ROUND_OPTIONS)
                     
-                    col3, col4 = st.columns(2)
-                    new_date = col3.date_input("Match Date", format="DD/MM/YYYY")
-                    new_start_time = col4.time_input("Start Time (Optional)", value=None)
+                    new_date = st.date_input("Match Date", format="DD/MM/YYYY")
+                    new_start_time = st.time_input("Start Time (Optional)", value=None)
                     
                     new_hide_mins = st.number_input("Hide Player Names Until (Mins before start)", min_value=0, value=60, step=15)
                     new_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=False)
                     
-                    if st.form_submit_button("Create Competition"):
+                    st.write("")
+                    if st.form_submit_button("Create Competition", use_container_width=True):
                         if new_opp_team:
                             secure_access_code = generate_random_code()
                             time_string = new_start_time.strftime("%H:%M") if new_start_time else None
@@ -413,31 +473,31 @@ elif role == "admin":
                     c_data = comp_names_dict[edit_comp_name]
                     
                     with st.form("edit_comp_form"):
-                        e_c1, e_c2 = st.columns(2)
-                        e_cat = e_c1.selectbox("Category", CATEGORY_OPTIONS, index=safe_index(CATEGORY_OPTIONS, c_data['category']))
-                        e_name = e_c2.text_input("Competition Name", value=c_data['comp_name'])
+                        e_cat = st.selectbox("Category", CATEGORY_OPTIONS, index=safe_index(CATEGORY_OPTIONS, c_data['category']))
+                        e_name = st.text_input("Competition Name", value=c_data['comp_name'])
                         
-                        e_c3, e_c4 = st.columns(2)
-                        e_opp = e_c3.text_input("Opposition Team", value=c_data['opposition_team'])
+                        e_opp = st.text_input("Opposition Team", value=c_data['opposition_team'])
                         
                         current_round = c_data.get('round')
-                        e_round = e_c4.selectbox("Round", ROUND_OPTIONS, index=safe_index(ROUND_OPTIONS, current_round if current_round else "Not Applicable"))
+                        e_round = st.selectbox("Round", ROUND_OPTIONS, index=safe_index(ROUND_OPTIONS, current_round if current_round else "Not Applicable"))
                         
-                        e_c5, e_c6 = st.columns(2)
                         try: parsed_date = datetime.strptime(c_data['match_date'], "%Y-%m-%d").date() if c_data.get('match_date') else datetime.now(ireland_tz).date()
                         except: parsed_date = datetime.now(ireland_tz).date()
                             
-                        e_date = e_c5.date_input("Match Date", value=parsed_date, format="DD/MM/YYYY")
+                        e_date = st.date_input("Match Date", value=parsed_date, format="DD/MM/YYYY")
                         parsed_time = safe_time_parse(c_data.get('start_time', ''))
-                        e_time = e_c6.time_input("Start Time", value=parsed_time)
+                        e_time = st.time_input("Start Time", value=parsed_time)
                         
                         hide_val = c_data.get('hide_mins')
                         hide_val = int(hide_val) if hide_val is not None else 60
                         e_hide_mins = st.number_input("Hide Player Names Until (Mins before)", min_value=0, value=hide_val, step=15)
+                        
+                        st.write("")
                         e_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=c_data.get('always_hide_names', False))
                         e_archived = st.checkbox("Archive Competition (Hide from Public)", value=c_data.get('archived', False))
+                        st.write("")
                         
-                        if st.form_submit_button("Update Competition"):
+                        if st.form_submit_button("Update Competition", use_container_width=True):
                             updated_time_str = e_time.strftime("%H:%M") if e_time else None
                             updated_round_str = e_round if e_round != "Not Applicable" else None
                             
@@ -455,10 +515,10 @@ elif role == "admin":
                             except Exception as e:
                                 st.error(f"Database Error: {e}")
                                 
-                    with st.popover(f"🚨 Delete {edit_comp_name} 🚨", key=f"del_comp_{c_data['id']}"):
+                    with st.popover(f"🚨 Delete {edit_comp_name} 🚨", key=f"del_comp_{c_data['id']}", use_container_width=True):
                         st.warning(f"Confirm deletion of {edit_comp_name}?")
                         del_comp_placeholder = st.empty()
-                        if del_comp_placeholder.button("Yes, Delete", key=f"btn_del_comp_{c_data['id']}", type="primary"):
+                        if del_comp_placeholder.button("Yes, Delete", key=f"btn_del_comp_{c_data['id']}", type="primary", use_container_width=True):
                             del_comp_placeholder.empty()
                             supabase.table('competitions').delete().eq('id', c_data['id']).execute()
                             fetch_all.clear()
@@ -488,12 +548,12 @@ elif role == "admin":
                     default_opp_name = target_comp_data["opposition_team"] if target_comp_data else ""
                     
                     with st.form("create_pairing_form", clear_on_submit=True):
-                        col1, col2 = st.columns(2)
-                        lb_player_input = col1.text_input("L&B Player Name")
-                        opp_player_input = col2.text_input("Opposition Player Name", value=default_opp_name)
+                        lb_player_input = st.text_input("L&B Player Name")
+                        opp_player_input = st.text_input("Opposition Player Name", value=default_opp_name)
                         match_venue = st.selectbox("Venue", VENUE_OPTIONS)
                         
-                        if st.form_submit_button("Add Match Pairing"):
+                        st.write("")
+                        if st.form_submit_button("Add Match Pairing", use_container_width=True):
                             if lb_player_input and opp_player_input:
                                 target_comp_id = comp_names_dict_add[target_comp_title]
                                 existing = [p for p in pairings if p["competition_id"] == target_comp_id]
@@ -540,15 +600,14 @@ elif role == "admin":
                         p_data = p_opts[sel_p]
                         
                         with st.form("edit_match_form"):
-                            col1, col2 = st.columns(2)
-                            e_lb = col1.text_input("L&B Player", value=p_data.get('landb_player', ''))
-                            e_opp = col2.text_input("Opposition Player", value=p_data.get('opposition_player', ''))
+                            e_lb = st.text_input("L&B Player", value=p_data.get('landb_player', ''))
+                            e_opp = st.text_input("Opposition Player", value=p_data.get('opposition_player', ''))
                             
-                            e_c3, e_c4 = st.columns(2)
-                            e_venue = e_c3.selectbox("Venue", VENUE_OPTIONS, index=safe_index(VENUE_OPTIONS, p_data.get('venue', 'Home')))
-                            e_order = e_c4.number_input("Display Order", value=p_data.get('display_order', 0), step=1)
+                            e_venue = st.selectbox("Venue", VENUE_OPTIONS, index=safe_index(VENUE_OPTIONS, p_data.get('venue', 'Home')))
+                            e_order = st.number_input("Display Order", value=p_data.get('display_order', 0), step=1)
                             
-                            if st.form_submit_button("Update Match"):
+                            st.write("")
+                            if st.form_submit_button("Update Match", use_container_width=True):
                                 supabase.table('pairings').update({
                                     "landb_player": e_lb, 
                                     "opposition_player": e_opp, 
@@ -562,7 +621,7 @@ elif role == "admin":
                         with st.popover("🚨 Delete Match 🚨", key=f"del_match_{p_data['id']}", use_container_width=True):
                             st.warning("Confirm deletion of this match?")
                             del_match_placeholder = st.empty()
-                            if del_match_placeholder.button("Yes, Delete", key=f"btn_del_match_{p_data['id']}", type="primary"):
+                            if del_match_placeholder.button("Yes, Delete", key=f"btn_del_match_{p_data['id']}", type="primary", use_container_width=True):
                                 del_match_placeholder.empty()
                                 supabase.table('pairings').delete().eq('id', p_data['id']).execute()
                                 fetch_all.clear()
@@ -583,7 +642,7 @@ elif role == "admin":
             st.code(f"{APP_BASE_URL}/?role=admin", language="text")
             
             st.divider()
-            st.markdown("**Manager Portal Links** (Locks user to specific competition):")
+            st.markdown("**Manager Portal Links**:")
             
             filter_cat_links = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_links")
             show_archived = st.checkbox("Show Archived Competitions")
@@ -617,7 +676,9 @@ elif role == "admin":
                 with st.form("add_master_form"):
                     m_name = st.text_input("Competition Name (e.g., Barton Shield)")
                     m_cat = st.selectbox("Category", CATEGORY_OPTIONS)
-                    if st.form_submit_button("Add to Master"):
+                    
+                    st.write("")
+                    if st.form_submit_button("Add to Master", use_container_width=True):
                         if m_name:
                             supabase.table("competitions_master").insert({
                                 "comp_name": m_name, "category": m_cat
@@ -636,7 +697,9 @@ elif role == "admin":
                     with st.form("edit_master_form"):
                         e_name = st.text_input("Name", value=m_data['comp_name'])
                         e_cat = st.selectbox("Category", CATEGORY_OPTIONS, index=safe_index(CATEGORY_OPTIONS, m_data['category']))
-                        if st.form_submit_button("Update Master Template"):
+                        
+                        st.write("")
+                        if st.form_submit_button("Update Master Template", use_container_width=True):
                             supabase.table("competitions_master").update({
                                 "comp_name": e_name, "category": e_cat
                             }).eq("id", m_data['id']).execute()
@@ -646,7 +709,7 @@ elif role == "admin":
                     with st.popover(f"🚨 Delete {m_data['comp_name']} 🚨", use_container_width=True):
                         st.warning(f"Confirm deletion of {m_data['comp_name']} from Master List?")
                         del_master_placeholder = st.empty()
-                        if del_master_placeholder.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary"):
+                        if del_master_placeholder.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary", use_container_width=True):
                             del_master_placeholder.empty()
                             supabase.table("competitions_master").delete().eq("id", m_data['id']).execute()
                             fetch_all.clear()
