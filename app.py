@@ -156,7 +156,13 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
     
     should_show = (view_mode == "manager") or show_venue
     venue_html = f"<div style='font-size: 11px; color: gray; margin-top: 4px;'>📍 {p.get('venue', 'Unknown')}</div>" if should_show else ""
-    return f"<div style='display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 10px;'><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{lb_score_html}<div style='font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;'>{lb_name_display}</div>{venue_html}</div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'><div style='background-color: black; color: white; padding: 2px; font-size: 13px; border-radius: 3px; margin-bottom: 4px;'>{hole_display}</div><div style='background-color: {p_status_color}; color: white; padding: 2px; font-size: 11px; font-weight: bold; border-radius: 3px;'>{p['status']}</div></div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{opp_score_html}<div style='font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;'>{opp_name_display}</div></div></div>"
+    
+    # Conditionally display the hole only if the match has started
+    hole_html = ""
+    if p['status'] != "Not Started":
+        hole_html = f"<div style='background-color: black; color: white; padding: 2px; font-size: 13px; border-radius: 3px; margin-bottom: 4px;'>{hole_display}</div>"
+        
+    return f"<div style='display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 10px;'><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{lb_score_html}<div style='font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;'>{lb_name_display}</div>{venue_html}</div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{hole_html}<div style='background-color: {p_status_color}; color: white; padding: 2px; font-size: 11px; font-weight: bold; border-radius: 3px;'>{p['status']}</div></div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{opp_score_html}<div style='font-weight: bold; font-size: 15px; margin-top: 6px; line-height: 1.2;'>{opp_name_display}</div></div></div>"
 
 # --- LIST DEFINITIONS ---
 HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
