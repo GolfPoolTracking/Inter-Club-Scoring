@@ -17,9 +17,9 @@ def generate_random_code(length=6):
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CRITICAL FIX v6: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
+# --- CRITICAL FIX v7: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
 # Watches for Selectboxes, Date Inputs, and Time Inputs and forces them to be read-only.
-# Tracks iOS touch events to force-close any calendar or dropdown if tapped twice.
+# Track container nodes and calendar selectors to force-close on double tap.
 components.html(
     """
     <script>
@@ -28,53 +28,57 @@ components.html(
         
         // 1. Prevent keyboard popups on Select, Date, and Time inputs
         const observer = new MutationObserver(function(mutations) {
-            const inputs = doc.querySelectorAll('div[data-baseweb="select"] input, div[data-testid="stDateInput"] input, div[data-testid="stTimeInput"] input');
+            const inputs = doc.querySelectorAll(
+                'div[data-baseweb="select"] input, div[data-testid="stDateInput"] input, div[data-testid="stTimeInput"] input'
+            );
             inputs.forEach(function(input) {
                 if (input.getAttribute('inputmode') !== 'none') {
                     input.setAttribute('inputmode', 'none');
                     input.setAttribute('readonly', 'true');
-                    input.style.caretColor = 'transparent'; // hide blinking cursor
+                    input.style.caretColor = 'transparent';
                 }
             });
         });
         observer.observe(doc.body, { childList: true, subtree: true });
 
-        // 2. Universal Mobile Toggle Hack (Force close on double tap)
-        let lastTappedInput = null;
+        // 2. Universal Mobile Toggle Fix
+        // Track the *container node* instead of the input reference — survives re-renders.
+        let lastTappedContainer = null;
 
         doc.addEventListener('touchstart', function(e) {
-            // Check if the user is tapping an input field
-            const inputContainer = e.target.closest('div[data-baseweb="select"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"]');
-            
+            const inputContainer = e.target.closest(
+                'div[data-baseweb="select"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"]'
+            );
+
             if (inputContainer) {
-                const currentInput = inputContainer.querySelector('input');
-                
-                // Check if any React popover (calendar or dropdown) is currently open on the screen
-                const popover = doc.querySelector('div[data-baseweb="popover"]');
-                
-                if (popover && lastTappedInput === currentInput) {
-                    // User tapped the exact same input while its popover is open. FORCE CLOSE IT.
+                // FIX 1: include data-baseweb="calendar" for the date picker popover
+                const popover = doc.querySelector(
+                    'div[data-baseweb="popover"], div[data-baseweb="calendar"]'
+                );
+
+                // FIX 2: compare container nodes, not input element references
+                if (popover && lastTappedContainer === inputContainer) {
                     e.preventDefault();
                     e.stopPropagation();
-                    
-                    // Dispatch an Escape key event (React popovers universally close on Escape)
-                    const esc = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true });
+
+                    const esc = new KeyboardEvent('keydown', {
+                        key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true
+                    });
                     doc.dispatchEvent(esc);
-                    
-                    if (currentInput) currentInput.blur();
-                    lastTappedInput = null; // Reset
+
+                    const input = inputContainer.querySelector('input');
+                    if (input) input.blur();
+                    lastTappedContainer = null;
                 } else {
-                    // First tap, let it open normally and remember this input
-                    lastTappedInput = currentInput;
+                    lastTappedContainer = inputContainer;
                 }
             } else {
-                // If user taps anywhere else (like the background), reset the tracker
-                // (Unless they are tapping inside the calendar popover itself to pick a date)
-                if (!e.target.closest('div[data-baseweb="popover"]')) {
-                    lastTappedInput = null;
+                // Reset unless the user is tapping *inside* an open popover/calendar
+                if (!e.target.closest('div[data-baseweb="popover"], div[data-baseweb="calendar"]')) {
+                    lastTappedContainer = null;
                 }
             }
-        }, true); // Capture phase to intercept reliably before React processes it
+        }, true);
     }
     </script>
     """,
