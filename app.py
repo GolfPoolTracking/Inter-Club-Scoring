@@ -17,9 +17,9 @@ def generate_random_code(length=6):
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CRITICAL FIX v5: JAVASCRIPT KEYBOARD BLOCKER & DATE TOGGLE FIX ---
+# --- CRITICAL FIX v6: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
 # Watches for Selectboxes, Date Inputs, and Time Inputs and forces them to be read-only.
-# Also adds a focus-based listener so tapping an open calendar/dropdown forces it to close.
+# Tracks iOS touch events to force-close any calendar or dropdown if tapped twice.
 components.html(
     """
     <script>
@@ -39,28 +39,42 @@ components.html(
         });
         observer.observe(doc.body, { childList: true, subtree: true });
 
-        // 2. Allow collapsing Select, Date, and Time dropdowns by clicking the box again
-        doc.addEventListener('pointerdown', function(e) {
+        // 2. Universal Mobile Toggle Hack (Force close on double tap)
+        let lastTappedInput = null;
+
+        doc.addEventListener('touchstart', function(e) {
+            // Check if the user is tapping an input field
             const inputContainer = e.target.closest('div[data-baseweb="select"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"]');
+            
             if (inputContainer) {
-                const input = inputContainer.querySelector('input');
-                if (input) {
-                    // Streamlit date pickers don't consistently use aria-expanded.
-                    // Checking if the input is already the active/focused element catches all scenarios.
-                    const isExpanded = input.getAttribute('aria-expanded') === 'true';
-                    const isFocused = (doc.activeElement === input);
+                const currentInput = inputContainer.querySelector('input');
+                
+                // Check if any React popover (calendar or dropdown) is currently open on the screen
+                const popover = doc.querySelector('div[data-baseweb="popover"]');
+                
+                if (popover && lastTappedInput === currentInput) {
+                    // User tapped the exact same input while its popover is open. FORCE CLOSE IT.
+                    e.preventDefault();
+                    e.stopPropagation();
                     
-                    if (isExpanded || isFocused) {
-                        // Force close it by stripping focus just after the native click fires
-                        setTimeout(() => {
-                            if (doc.activeElement) {
-                                doc.activeElement.blur();
-                            }
-                        }, 50);
-                    }
+                    // Dispatch an Escape key event (React popovers universally close on Escape)
+                    const esc = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true });
+                    doc.dispatchEvent(esc);
+                    
+                    if (currentInput) currentInput.blur();
+                    lastTappedInput = null; // Reset
+                } else {
+                    // First tap, let it open normally and remember this input
+                    lastTappedInput = currentInput;
+                }
+            } else {
+                // If user taps anywhere else (like the background), reset the tracker
+                // (Unless they are tapping inside the calendar popover itself to pick a date)
+                if (!e.target.closest('div[data-baseweb="popover"]')) {
+                    lastTappedInput = null;
                 }
             }
-        }, true); // Capture phase to intercept reliably
+        }, true); // Capture phase to intercept reliably before React processes it
     }
     </script>
     """,
