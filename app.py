@@ -8,7 +8,6 @@ import urllib.parse
 import base64
 import random
 import string
-import streamlit.components.v1 as components
 
 # --- Random code generator for unique keys ---
 def generate_random_code(length=6):
@@ -17,10 +16,11 @@ def generate_random_code(length=6):
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CRITICAL FIX v7: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
+# --- CRITICAL FIX v8: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
 # Watches for Selectboxes, Date Inputs, and Time Inputs and forces them to be read-only.
 # Track container nodes and calendar selectors to force-close on double tap.
-components.html(
+# Updated to use native st.html() to prevent Streamlit deprecation warnings.
+st.html(
     """
     <script>
     if (window.parent && window.parent.document) {
@@ -81,9 +81,7 @@ components.html(
         }, true);
     }
     </script>
-    """,
-    height=0,
-    width=0
+    """
 )
 
 # Inject Mobile-Optimized CSS, Meta Tags, and Noto Serif font safely
