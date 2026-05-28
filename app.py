@@ -118,16 +118,17 @@ body {
     user-select: none;
 }
 
-/* Mobile Optimization: Massive Touch Targets for Dropdowns */
-div[data-baseweb="select"] > div {
-    min-height: 55px !important;
+/* Mobile Optimization: Consistent Touch Targets for ALL Inputs & Dropdowns */
+div[data-baseweb="select"] > div,
+div[data-baseweb="input"] > div {
+    min-height: 50px !important;
     font-size: 16px !important;
     border-radius: 8px !important;
 }
 
 /* Mobile Optimization: Fat-finger friendly buttons */
 .stButton > button {
-    min-height: 55px !important;
+    min-height: 50px !important;
     font-size: 18px !important;
     font-weight: 600 !important;
     border-radius: 8px !important;
