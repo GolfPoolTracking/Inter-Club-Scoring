@@ -650,7 +650,9 @@ elif role == "admin":
         with tab1:
             st.subheader("Create New Competition")
             if masters:
-                master_opts = {f"{m['category']} - {m['comp_name']}": m for m in masters}
+                # Sort Alphabetically by Category, then by Competition Name
+                sorted_masters = sorted(masters, key=lambda x: (x.get('category', ''), x.get('comp_name', '')))
+                master_opts = {f"{m['category']} - {m['comp_name']}": m for m in sorted_masters}
                 selected_master = st.selectbox("Select from Master List", list(master_opts.keys()))
                 m_data = master_opts[selected_master]
                 
@@ -718,6 +720,9 @@ elif role == "admin":
                     c for c in comps 
                     if c.get('year') == admin_year and (filter_cat == "All" or c['category'] == filter_cat)
                 ]
+                
+                # Sort Alphabetically by Category, then by Competition Name
+                filtered_comps = sorted(filtered_comps, key=lambda x: (x.get('category', ''), x.get('comp_name', '')))
                 
                 if filtered_comps:
                     comp_names_dict = {get_comp_display_name(c): c for c in filtered_comps}
@@ -801,6 +806,9 @@ elif role == "admin":
                     if c.get('year') == admin_year and (filter_cat_add == "All" or c['category'] == filter_cat_add)
                 ]
                 
+                # Sort Alphabetically by Category, then by Competition Name
+                filtered_comps_add = sorted(filtered_comps_add, key=lambda x: (x.get('category', ''), x.get('comp_name', '')))
+                
                 if filtered_comps_add:
                     comp_names_dict_add = {get_comp_display_name(c): c['id'] for c in filtered_comps_add}
                     target_comp_title = st.selectbox("Select Competition", list(comp_names_dict_add.keys()), key="add_match_sel")
@@ -849,6 +857,9 @@ elif role == "admin":
                     c for c in comps 
                     if c.get('year') == admin_year and (filter_cat_m == "All" or c['category'] == filter_cat_m)
                 ]
+                
+                # Sort Alphabetically by Category, then by Competition Name
+                filtered_comps_m = sorted(filtered_comps_m, key=lambda x: (x.get('category', ''), x.get('comp_name', '')))
                 
                 if filtered_comps_m:
                     comp_names_dict_m = {get_comp_display_name(c): c['id'] for c in filtered_comps_m}
@@ -919,6 +930,9 @@ elif role == "admin":
                 and (filter_cat_links == "All" or c['category'] == filter_cat_links)
                 and (show_archived or is_comp_active(c))
             ]
+            
+            # Sort Alphabetically by Category, then by Competition Name
+            filtered_comps_links = sorted(filtered_comps_links, key=lambda x: (x.get('category', ''), x.get('comp_name', '')))
             
             if filtered_comps_links:
                 for c in filtered_comps_links:
