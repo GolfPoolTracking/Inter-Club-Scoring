@@ -8,6 +8,7 @@ import urllib.parse
 import base64
 import random
 import string
+import streamlit.components.v1 as components
 
 # --- Random code generator for unique keys ---
 def generate_random_code(length=6):
@@ -16,52 +17,74 @@ def generate_random_code(length=6):
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CRITICAL FIX v8: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
-# Deployed via native st.markdown iframe to avoid the st.components.v1.html deprecation warning.
-keyboard_blocker_html = """
-<iframe srcdoc="&lt;script&gt;
-if (window.parent &amp;&amp; window.parent.document) {
-    const doc = window.parent.document;
-    
-    // 1. Prevent keyboard popups on Select, Date, and Time inputs
-    const observer = new MutationObserver(function(mutations) {
-        const inputs = doc.querySelectorAll('div[data-baseweb=\&quot;select\&quot;] input, div[data-testid=\&quot;stDateInput\&quot;] input, div[data-testid=\&quot;stTimeInput\&quot;] input');
-        inputs.forEach(function(input) {
-            if (input.getAttribute('inputmode') !== 'none') {
-                input.setAttribute('inputmode', 'none');
-                input.setAttribute('readonly', 'true');
-                input.style.caretColor = 'transparent';
-            }
+# --- CRITICAL FIX: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
+# Restored safely to components.html to prevent raw text bleeding.
+components.html(
+    """
+    <script>
+    if (window.parent && window.parent.document) {
+        const doc = window.parent.document;
+        
+        // 1. Prevent keyboard popups on Select, Date, and Time inputs
+        const observer = new MutationObserver(function(mutations) {
+            const inputs = doc.querySelectorAll(
+                'div[data-baseweb="select"] input, div[data-testid="stDateInput"] input, div[data-testid="stTimeInput"] input'
+            );
+            inputs.forEach(function(input) {
+                if (input.getAttribute('inputmode') !== 'none') {
+                    input.setAttribute('inputmode', 'none');
+                    input.setAttribute('readonly', 'true');
+                    input.style.caretColor = 'transparent';
+                }
+            });
         });
-    });
-    observer.observe(doc.body, { childList: true, subtree: true });
+        observer.observe(doc.body, { childList: true, subtree: true });
 
-    // 2. Universal Mobile Toggle Fix
-    let lastTappedContainer = null;
-    doc.addEventListener('touchstart', function(e) {
-        const inputContainer = e.target.closest('div[data-baseweb=\&quot;select\&quot;], div[data-testid=\&quot;stDateInput\&quot;], div[data-testid=\&quot;stTimeInput\&quot;]');
-        if (inputContainer) {
-            const popover = doc.querySelector('div[data-baseweb=\&quot;popover\&quot;], div[data-baseweb=\&quot;calendar\&quot;]');
-            if (popover &amp;&amp; lastTappedContainer === inputContainer) {
-                e.preventDefault(); e.stopPropagation();
-                const esc = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true });
-                doc.dispatchEvent(esc);
-                const input = inputContainer.querySelector('input');
-                if (input) input.blur();
-                lastTappedContainer = null;
+        // 2. Universal Mobile Toggle Fix
+        // Track the *container node* instead of the input reference — survives re-renders.
+        let lastTappedContainer = null;
+
+        doc.addEventListener('touchstart', function(e) {
+            const inputContainer = e.target.closest(
+                'div[data-baseweb="select"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"]'
+            );
+
+            if (inputContainer) {
+                // FIX 1: include data-baseweb="calendar" for the date picker popover
+                const popover = doc.querySelector(
+                    'div[data-baseweb="popover"], div[data-baseweb="calendar"]'
+                );
+
+                // FIX 2: compare container nodes, not input element references
+                if (popover && lastTappedContainer === inputContainer) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const esc = new KeyboardEvent('keydown', {
+                        key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true
+                    });
+                    doc.dispatchEvent(esc);
+
+                    const input = inputContainer.querySelector('input');
+                    if (input) input.blur();
+                    lastTappedContainer = null;
+                } else {
+                    lastTappedContainer = inputContainer;
+                }
             } else {
-                lastTappedContainer = inputContainer;
+                // Reset unless the user is tapping *inside* an open popover/calendar
+                if (!e.target.closest('div[data-baseweb="popover"], div[data-baseweb="calendar"]')) {
+                    lastTappedContainer = null;
+                }
             }
-        } else {
-            if (!e.target.closest('div[data-baseweb=\&quot;popover\&quot;], div[data-baseweb=\&quot;calendar\&quot;]')) {
-                lastTappedContainer = null;
-            }
-        }
-    }, true);
-}
-&lt;/script&gt;" style="display:none; width:0; height:0;"></iframe>
-"""
-st.markdown(keyboard_blocker_html, unsafe_allow_html=True)
+        }, true);
+    }
+    </script>
+    """,
+    height=0,
+    width=0
+)
+
 
 # Inject Mobile-Optimized CSS, Meta Tags, and Noto Serif font safely
 st.markdown("""
@@ -265,9 +288,6 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
     is_started = p['status'] in ["LIVE", "FINISHED"]
     tied_text = "A/S" if is_started else "ALL SQUARE"
 
-    # Score Wrapper ensures scores and hole details perfectly align at the bottom edge
-    score_wrapper_style = "height: 48px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;"
-
     if p['leader'] == 'L&B':
         lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px; width: 100%; box-sizing: border-box;'>{p['score']}</div>"
     elif p['leader'] == 'Tied':
@@ -374,15 +394,6 @@ if role == "public":
         st.write("") # Mobile spacing
         
         # 1. State Persistence via URL query parameters
-        public_years = sorted(list(set([c.get('year', datetime.now(ireland_tz).year) for c in active_comps if c.get('year')])), reverse=True)
-        if not public_years: public_years = [datetime.now(ireland_tz).year]
-        
-        q_yr = st.query_params.get("yr", str(public_years[0]))
-        try:
-            yr_idx = public_years.index(int(q_yr))
-        except ValueError:
-            yr_idx = 0
-            
         q_cat = st.query_params.get("cat", "All")
         cat_opts = ["All"] + CATEGORY_OPTIONS
         try:
@@ -390,23 +401,19 @@ if role == "public":
         except ValueError:
             cat_idx = 0
 
-        c_yr, c_cat = st.columns([1, 2])
-        with c_yr:
-            sel_year = st.selectbox("Year", public_years, index=yr_idx)
-            if str(sel_year) != q_yr:
-                st.query_params["yr"] = str(sel_year)
-        with c_cat:
-            filter_cat = st.radio("Category", cat_opts, index=cat_idx, horizontal=True, label_visibility="collapsed")
-            if filter_cat != q_cat:
-                st.query_params["cat"] = filter_cat
+        # Note: Year removed from public view per request. Using current year as default constraint.
+        current_year = datetime.now(ireland_tz).year
+        filter_cat = st.radio("Category", cat_opts, index=cat_idx, horizontal=True, label_visibility="collapsed")
+        if filter_cat != q_cat:
+            st.query_params["cat"] = filter_cat
             
         filtered_comps = [
             c for c in active_comps 
-            if c.get('year') == sel_year and (filter_cat == "All" or c['category'] == filter_cat)
+            if c.get('year') == current_year and (filter_cat == "All" or c['category'] == filter_cat)
         ]
                 
         if not filtered_comps:
-            st.info("No competitions match your filters.")
+            st.info("No active competitions match your filters.")
         else:
             # Pre-calculate if any filtered comp is LIVE for the Auto-Refresh Timer
             any_live_matches = False
@@ -417,28 +424,39 @@ if role == "public":
                     break
                     
             if any_live_matches:
-                # 2. Native Javascript Injection using an img error hack to avoid sandbox restrictions
-                # This guarantees the DOM is manipulated securely and the timer counts down.
+                # Safe Auto-Refresh Implementation
+                # Renders the visual box natively in Streamlit, then drives it via components.html script
                 st.markdown("""
                 <div style="text-align: center; color: #8bc34a; font-size: 14px; font-weight: bold; margin-bottom: 25px; margin-top: 10px; background-color: rgba(139, 195, 74, 0.1); padding: 8px; border-radius: 8px;">
                     🔴 LIVE: Auto-refreshing in <span id="timer-span">120</span>s
                 </div>
-                <img src="empty.png" onerror="
-                    if (window.liveRefreshInterval) clearInterval(window.liveRefreshInterval);
-                    let time = 120;
-                    window.liveRefreshInterval = setInterval(() => {
-                        time--;
-                        let span = document.getElementById('timer-span');
-                        if (span) {
-                            span.innerText = time;
-                        }
-                        if (time <= 0) {
-                            clearInterval(window.liveRefreshInterval);
-                            window.location.reload();
-                        }
-                    }, 1000);
-                " style="display:none;">
                 """, unsafe_allow_html=True)
+
+                components.html(
+                    """
+                    <script>
+                    if (window.parent && window.parent.document) {
+                        if (window.parent.liveRefreshInterval) {
+                            clearInterval(window.parent.liveRefreshInterval);
+                        }
+                        let time = 120;
+                        window.parent.liveRefreshInterval = setInterval(function() {
+                            time--;
+                            let span = window.parent.document.getElementById('timer-span');
+                            if (span) {
+                                span.innerText = time;
+                            }
+                            if (time <= 0) {
+                                clearInterval(window.parent.liveRefreshInterval);
+                                window.parent.location.reload();
+                            }
+                        }, 1000);
+                    }
+                    </script>
+                    """,
+                    height=0,
+                    width=0
+                )
 
             for comp in filtered_comps:
                 comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], 
@@ -451,7 +469,7 @@ if role == "public":
                 
                 st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-bottom: 8px; margin-top: 20px;'>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
                 
-                # Big, obvious Refresh Button directly under title
+                # Big, obvious Native Refresh Button
                 c1, c2, c3 = st.columns([1, 2, 1])
                 with c2:
                     if st.button("↻ Refresh Scores", key=f"refresh_{comp['id']}", use_container_width=True):
@@ -495,7 +513,7 @@ elif role == "manager":
     if comp:
         st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-top: 15px;'>Manage:<br>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
         
-        # Big, obvious Refresh Button directly under title
+        # Big, obvious Native Refresh Button
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             if st.button("↻ Refresh Scores", key=f"mgr_refresh_{comp['id']}", use_container_width=True):
