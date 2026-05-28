@@ -18,6 +18,7 @@ def generate_random_code(length=6):
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
 # --- CRITICAL FIX: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
+# Restored safely to components.html to prevent raw text bleeding.
 components.html(
     """
     <script>
@@ -647,6 +648,9 @@ elif role == "admin":
                     
                     new_date = st.date_input("Match Date", format="DD/MM/YYYY")
                     new_start_time = st.time_input("Start Time (Optional)", value=None)
+
+                    new_hide_mins = st.number_input("Hide Player Names Until (Mins before start)", min_value=0, value=60, step=15)
+                    new_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=False)
                     
                     st.write("---")
                     st.markdown("##### 🗄️ Archive Settings")
@@ -656,9 +660,6 @@ elif role == "admin":
                     with c_arc2:
                         new_archive_hours = st.selectbox("Auto-Archive Timer", options=ARCHIVE_HOURS_OPTIONS, format_func=lambda x: f"{x//24} Day{'s' if x>24 else ''} ({x} hrs)")
                     st.write("---")
-
-                    new_hide_mins = st.number_input("Hide Player Names Until (Mins before start)", min_value=0, value=60, step=15)
-                    new_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=False)
                     
                     st.write("")
                     if st.form_submit_button("Create Competition", use_container_width=True):
@@ -725,6 +726,13 @@ elif role == "admin":
                         parsed_time = safe_time_parse(c_data.get('start_time', ''))
                         e_time = st.time_input("Start Time", value=parsed_time)
                         
+                        hide_val = c_data.get('hide_mins')
+                        hide_val = int(hide_val) if hide_val is not None else 60
+                        e_hide_mins = st.number_input("Hide Player Names Until (Mins before)", min_value=0, value=hide_val, step=15)
+                        
+                        st.write("")
+                        e_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=c_data.get('always_hide_names', False))
+                        
                         st.write("---")
                         st.markdown("##### 🗄️ Archive Settings")
                         e_col_aa1, e_col_aa2 = st.columns(2)
@@ -734,14 +742,6 @@ elif role == "admin":
                         with e_col_aa2:
                             e_archive_hours = st.selectbox("Auto-Archive Timer", options=ARCHIVE_HOURS_OPTIONS, index=safe_index(ARCHIVE_HOURS_OPTIONS, c_data.get('auto_archive_hours', 24)), format_func=lambda x: f"{x//24} Day{'s' if x>24 else ''} ({x} hrs)")
                         st.write("---")
-                        
-                        hide_val = c_data.get('hide_mins')
-                        hide_val = int(hide_val) if hide_val is not None else 60
-                        e_hide_mins = st.number_input("Hide Player Names Until (Mins before)", min_value=0, value=hide_val, step=15)
-                        
-                        st.write("")
-                        e_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=c_data.get('always_hide_names', False))
-                        st.write("")
                         
                         if st.form_submit_button("Update Competition", use_container_width=True):
                             updated_time_str = e_time.strftime("%H:%M") if e_time else None
