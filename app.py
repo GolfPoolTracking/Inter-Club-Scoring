@@ -8,7 +8,6 @@ import urllib.parse
 import base64
 import random
 import string
-import streamlit.components.v1 as components
 
 # --- Random code generator for unique keys ---
 def generate_random_code(length=6):
@@ -17,68 +16,52 @@ def generate_random_code(length=6):
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CRITICAL FIX v7: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
-components.html(
-    """
-    <script>
-    if (window.parent && window.parent.document) {
-        const doc = window.parent.document;
-        
-        // 1. Prevent keyboard popups on Select, Date, and Time inputs
-        const observer = new MutationObserver(function(mutations) {
-            const inputs = doc.querySelectorAll(
-                'div[data-baseweb="select"] input, div[data-testid="stDateInput"] input, div[data-testid="stTimeInput"] input'
-            );
-            inputs.forEach(function(input) {
-                if (input.getAttribute('inputmode') !== 'none') {
-                    input.setAttribute('inputmode', 'none');
-                    input.setAttribute('readonly', 'true');
-                    input.style.caretColor = 'transparent';
-                }
-            });
-        });
-        observer.observe(doc.body, { childList: true, subtree: true });
-
-        // 2. Universal Mobile Toggle Fix
-        let lastTappedContainer = null;
-
-        doc.addEventListener('touchstart', function(e) {
-            const inputContainer = e.target.closest(
-                'div[data-baseweb="select"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"]'
-            );
-
-            if (inputContainer) {
-                const popover = doc.querySelector(
-                    'div[data-baseweb="popover"], div[data-baseweb="calendar"]'
-                );
-
-                if (popover && lastTappedContainer === inputContainer) {
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    const esc = new KeyboardEvent('keydown', {
-                        key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true
-                    });
-                    doc.dispatchEvent(esc);
-
-                    const input = inputContainer.querySelector('input');
-                    if (input) input.blur();
-                    lastTappedContainer = null;
-                } else {
-                    lastTappedContainer = inputContainer;
-                }
-            } else {
-                if (!e.target.closest('div[data-baseweb="popover"], div[data-baseweb="calendar"]')) {
-                    lastTappedContainer = null;
-                }
+# --- CRITICAL FIX v8: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
+# Deployed via native st.markdown iframe to avoid the st.components.v1.html deprecation warning.
+keyboard_blocker_html = """
+<iframe srcdoc="&lt;script&gt;
+if (window.parent &amp;&amp; window.parent.document) {
+    const doc = window.parent.document;
+    
+    // 1. Prevent keyboard popups on Select, Date, and Time inputs
+    const observer = new MutationObserver(function(mutations) {
+        const inputs = doc.querySelectorAll('div[data-baseweb=\&quot;select\&quot;] input, div[data-testid=\&quot;stDateInput\&quot;] input, div[data-testid=\&quot;stTimeInput\&quot;] input');
+        inputs.forEach(function(input) {
+            if (input.getAttribute('inputmode') !== 'none') {
+                input.setAttribute('inputmode', 'none');
+                input.setAttribute('readonly', 'true');
+                input.style.caretColor = 'transparent';
             }
-        }, true);
-    }
-    </script>
-    """,
-    height=0,
-    width=0
-)
+        });
+    });
+    observer.observe(doc.body, { childList: true, subtree: true });
+
+    // 2. Universal Mobile Toggle Fix
+    let lastTappedContainer = null;
+    doc.addEventListener('touchstart', function(e) {
+        const inputContainer = e.target.closest('div[data-baseweb=\&quot;select\&quot;], div[data-testid=\&quot;stDateInput\&quot;], div[data-testid=\&quot;stTimeInput\&quot;]');
+        if (inputContainer) {
+            const popover = doc.querySelector('div[data-baseweb=\&quot;popover\&quot;], div[data-baseweb=\&quot;calendar\&quot;]');
+            if (popover &amp;&amp; lastTappedContainer === inputContainer) {
+                e.preventDefault(); e.stopPropagation();
+                const esc = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true });
+                doc.dispatchEvent(esc);
+                const input = inputContainer.querySelector('input');
+                if (input) input.blur();
+                lastTappedContainer = null;
+            } else {
+                lastTappedContainer = inputContainer;
+            }
+        } else {
+            if (!e.target.closest('div[data-baseweb=\&quot;popover\&quot;], div[data-baseweb=\&quot;calendar\&quot;]')) {
+                lastTappedContainer = null;
+            }
+        }
+    }, true);
+}
+&lt;/script&gt;" style="display:none; width:0; height:0;"></iframe>
+"""
+st.markdown(keyboard_blocker_html, unsafe_allow_html=True)
 
 # Inject Mobile-Optimized CSS, Meta Tags, and Noto Serif font safely
 st.markdown("""
@@ -390,11 +373,36 @@ if role == "public":
     if active_comps:
         st.write("") # Mobile spacing
         
-        filter_cat = st.radio("Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, label_visibility="collapsed")
+        # 1. State Persistence via URL query parameters
+        public_years = sorted(list(set([c.get('year', datetime.now(ireland_tz).year) for c in active_comps if c.get('year')])), reverse=True)
+        if not public_years: public_years = [datetime.now(ireland_tz).year]
+        
+        q_yr = st.query_params.get("yr", str(public_years[0]))
+        try:
+            yr_idx = public_years.index(int(q_yr))
+        except ValueError:
+            yr_idx = 0
+            
+        q_cat = st.query_params.get("cat", "All")
+        cat_opts = ["All"] + CATEGORY_OPTIONS
+        try:
+            cat_idx = cat_opts.index(q_cat)
+        except ValueError:
+            cat_idx = 0
+
+        c_yr, c_cat = st.columns([1, 2])
+        with c_yr:
+            sel_year = st.selectbox("Year", public_years, index=yr_idx)
+            if str(sel_year) != q_yr:
+                st.query_params["yr"] = str(sel_year)
+        with c_cat:
+            filter_cat = st.radio("Category", cat_opts, index=cat_idx, horizontal=True, label_visibility="collapsed")
+            if filter_cat != q_cat:
+                st.query_params["cat"] = filter_cat
             
         filtered_comps = [
             c for c in active_comps 
-            if (filter_cat == "All" or c['category'] == filter_cat)
+            if c.get('year') == sel_year and (filter_cat == "All" or c['category'] == filter_cat)
         ]
                 
         if not filtered_comps:
@@ -409,37 +417,28 @@ if role == "public":
                     break
                     
             if any_live_matches:
-                # Visible 2-minute Auto-Refresh Countdown (Only loads if a match is LIVE)
-                st.html("""
+                # 2. Native Javascript Injection using an img error hack to avoid sandbox restrictions
+                # This guarantees the DOM is manipulated securely and the timer counts down.
+                st.markdown("""
                 <div style="text-align: center; color: #8bc34a; font-size: 14px; font-weight: bold; margin-bottom: 25px; margin-top: 10px; background-color: rgba(139, 195, 74, 0.1); padding: 8px; border-radius: 8px;">
                     🔴 LIVE: Auto-refreshing in <span id="timer-span">120</span>s
                 </div>
-                <script>
-                (function() {
-                    // Clear any existing intervals if Streamlit re-renders part of the DOM
+                <img src="empty.png" onerror="
                     if (window.liveRefreshInterval) clearInterval(window.liveRefreshInterval);
-                    
                     let time = 120;
                     window.liveRefreshInterval = setInterval(() => {
                         time--;
-                        // Fallback check to find span in child or parent frame depending on Streamlit version
                         let span = document.getElementById('timer-span');
-                        if (!span && window.parent) span = window.parent.document.getElementById('timer-span');
-                        
-                        if (span) span.innerText = time;
-                        
+                        if (span) {
+                            span.innerText = time;
+                        }
                         if (time <= 0) {
                             clearInterval(window.liveRefreshInterval);
-                            if (window.parent) {
-                                window.parent.location.reload();
-                            } else {
-                                window.location.reload();
-                            }
+                            window.location.reload();
                         }
                     }, 1000);
-                })();
-                </script>
-                """)
+                " style="display:none;">
+                """, unsafe_allow_html=True)
 
             for comp in filtered_comps:
                 comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], 
