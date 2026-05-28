@@ -8,7 +8,6 @@ import urllib.parse
 import base64
 import random
 import string
-import streamlit.components.v1 as components
 
 # --- Random code generator for unique keys ---
 def generate_random_code(length=6):
@@ -17,18 +16,14 @@ def generate_random_code(length=6):
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CRITICAL FIX v7: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
-# Watches for Selectboxes, Date Inputs, and Time Inputs and forces them to be read-only.
-# Track container nodes and calendar selectors to force-close on double tap.
-components.html(
+# --- CRITICAL FIX v9: NATIVE JAVASCRIPT KEYBOARD BLOCKER & TOGGLE FIX ---
+st.html(
     """
     <script>
-    if (window.parent && window.parent.document) {
-        const doc = window.parent.document;
-        
-        // 1. Prevent keyboard popups on Select, Date, and Time inputs
+    (function() {
+        // 1. Prevent keyboard popups on Select, Date, and Time inputs globally
         const observer = new MutationObserver(function(mutations) {
-            const inputs = doc.querySelectorAll(
+            const inputs = document.querySelectorAll(
                 'div[data-baseweb="select"] input, div[data-testid="stDateInput"] input, div[data-testid="stTimeInput"] input'
             );
             inputs.forEach(function(input) {
@@ -39,24 +34,21 @@ components.html(
                 }
             });
         });
-        observer.observe(doc.body, { childList: true, subtree: true });
+        observer.observe(document.body, { childList: true, subtree: true });
 
         // 2. Universal Mobile Toggle Fix
-        // Track the *container node* instead of the input reference — survives re-renders.
         let lastTappedContainer = null;
 
-        doc.addEventListener('touchstart', function(e) {
+        document.addEventListener('touchstart', function(e) {
             const inputContainer = e.target.closest(
                 'div[data-baseweb="select"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"]'
             );
 
             if (inputContainer) {
-                // FIX 1: include data-baseweb="calendar" for the date picker popover
-                const popover = doc.querySelector(
+                const popover = document.querySelector(
                     'div[data-baseweb="popover"], div[data-baseweb="calendar"]'
                 );
 
-                // FIX 2: compare container nodes, not input element references
                 if (popover && lastTappedContainer === inputContainer) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -64,7 +56,7 @@ components.html(
                     const esc = new KeyboardEvent('keydown', {
                         key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true
                     });
-                    doc.dispatchEvent(esc);
+                    document.dispatchEvent(esc);
 
                     const input = inputContainer.querySelector('input');
                     if (input) input.blur();
@@ -73,17 +65,14 @@ components.html(
                     lastTappedContainer = inputContainer;
                 }
             } else {
-                // Reset unless the user is tapping *inside* an open popover/calendar
                 if (!e.target.closest('div[data-baseweb="popover"], div[data-baseweb="calendar"]')) {
                     lastTappedContainer = null;
                 }
             }
         }, true);
-    }
+    })();
     </script>
-    """,
-    height=0,
-    width=0
+    """
 )
 
 # Inject Mobile-Optimized CSS, Meta Tags, and Noto Serif font safely
@@ -212,6 +201,30 @@ def format_date_display(date_string):
     except ValueError:
         return date_string
 
+def get_formatted_time(iso_str):
+    if not iso_str: return "N/A"
+    try:
+        dt = pd.to_datetime(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.tz_localize('UTC')
+        return dt.astimezone(ireland_tz).strftime("%H:%M")
+    except:
+        return "N/A"
+
+def get_comp_updated_time(pairings):
+    times = [p.get('updated_at') for p in pairings if p.get('updated_at')]
+    if not times:
+        return datetime.now(ireland_tz).strftime("%H:%M") # Fallback to current if no DB times
+    try:
+        dts = []
+        for t in times:
+            dt = pd.to_datetime(t)
+            if dt.tzinfo is None: dt = dt.tz_localize('UTC')
+            dts.append(dt)
+        return max(dts).astimezone(ireland_tz).strftime("%H:%M")
+    except:
+        return datetime.now(ireland_tz).strftime("%H:%M")
+
 def should_hide_names(comp):
     """Calculates if names should be hidden based on the 'always_hide' flag or the reveal window."""
     if comp.get('always_hide_names', False):
@@ -263,19 +276,22 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
     is_started = p['status'] in ["LIVE", "FINISHED"]
     tied_text = "A/S" if is_started else "ALL SQUARE"
 
+    # Score Wrapper ensures scores and hole details perfectly align at the bottom edge
+    score_wrapper_style = "height: 48px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;"
+
     if p['leader'] == 'L&B':
-        lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px;'>{p['score']}</div>"
+        lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px; width: 100%; box-sizing: border-box;'>{p['score']}</div>"
     elif p['leader'] == 'Tied':
-        lb_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px;'>{tied_text}</div>"
+        lb_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px; width: 100%; box-sizing: border-box;'>{tied_text}</div>"
     else:
-        lb_score_html = f"<div style='padding: 6px; visibility: hidden;'>Spacer</div>"
+        lb_score_html = f"<div style='padding: 6px; visibility: hidden; width: 100%;'>Spacer</div>"
         
     if p['leader'] == 'Opposition':
-        opp_score_html = f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px;'>{p['score'].replace('Down', 'Up')}</div>"
+        opp_score_html = f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px; width: 100%; box-sizing: border-box;'>{p['score'].replace('Down', 'Up')}</div>"
     elif p['leader'] == 'Tied':
-        opp_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px;'>{tied_text}</div>"
+        opp_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px; width: 100%; box-sizing: border-box;'>{tied_text}</div>"
     else:
-        opp_score_html = f"<div style='padding: 6px; visibility: hidden;'>Spacer</div>"
+        opp_score_html = f"<div style='padding: 6px; visibility: hidden; width: 100%;'>Spacer</div>"
         
     hole_val = str(p.get('hole', '1'))
     p_status_color = "gray" if p['status'] == "Not Started" else ("darkred" if p['status'] == "FINISHED" else "#8bc34a")
@@ -283,12 +299,34 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
     should_show = (view_mode == "manager") or show_venue
     venue_html = f"<div style='font-size: 12px; color: gray; margin-top: 6px;'>📍 {p.get('venue', 'Unknown')}</div>" if should_show else ""
     
-    # Conditionally display the hole only if the match has started
-    hole_html = ""
+    # Conditionally display the hole and THRU text only if the match has started
     if p.get('status', '').strip().lower() != "not started":
-        hole_html = f"<div style='font-size: 11px; color: gray; font-weight: bold; text-transform: uppercase; margin-bottom: 2px;'>Thru</div><div style='background-color: black; color: white; padding: 4px; font-size: 14px; font-weight: bold; border-radius: 4px; margin-bottom: 6px;'>{hole_val}</div>"
+        hole_html = f"<div style='font-size: 10px; color: gray; font-weight: bold; text-transform: uppercase; line-height: 1; margin-bottom: 4px;'>Thru</div><div style='background-color: black; color: white; padding: 4px 8px; font-size: 14px; font-weight: bold; border-radius: 4px; line-height: 1;'>{hole_val}</div>"
+    else:
+        hole_html = "" # Remains completely blank to maintain alignment without showing hole 1
+
+    # Match Level Updated Time
+    match_updated = get_formatted_time(p.get('updated_at'))
+    updated_html = f"<div style='font-size: 10px; color: gray; margin-top: 5px; font-weight: normal;'>Updated {match_updated}</div>" if match_updated != "N/A" else ""
         
-    return f"<div style='display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 15px;'><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{lb_score_html}<div style='font-weight: bold; font-size: 16px; margin-top: 8px; line-height: 1.3;'>{lb_name_display}</div>{venue_html}</div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%; margin-top: 2px;'>{hole_html}<div style='background-color: {p_status_color}; color: white; padding: 4px; font-size: 12px; font-weight: bold; border-radius: 4px;'>{p['status']}</div></div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{opp_score_html}<div style='font-weight: bold; font-size: 16px; margin-top: 8px; line-height: 1.3;'>{opp_name_display}</div></div></div>"
+    return f"""
+    <div style='display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 15px;'>
+        <div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>
+            <div style='{score_wrapper_style}'>{lb_score_html}</div>
+            <div style='font-weight: bold; font-size: 16px; margin-top: 8px; line-height: 1.3;'>{lb_name_display}</div>
+            {venue_html}
+        </div>
+        <div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>
+            <div style='{score_wrapper_style}'>{hole_html}</div>
+            <div style='background-color: {p_status_color}; color: white; padding: 4px; font-size: 12px; font-weight: bold; border-radius: 4px; margin-top: 5px;'>{p['status']}</div>
+            {updated_html}
+        </div>
+        <div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>
+            <div style='{score_wrapper_style}'>{opp_score_html}</div>
+            <div style='font-weight: bold; font-size: 16px; margin-top: 8px; line-height: 1.3;'>{opp_name_display}</div>
+        </div>
+    </div>
+    """
 
 # --- LIST DEFINITIONS ---
 HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
@@ -324,18 +362,38 @@ role = query_params.get("role", "public")
 
 # --- VIEW 1: PUBLIC SCOREBOARD ---
 if role == "public":
-    # Invisible 2-minute Auto-Refresh for Public View
-    components.html(
-        """
+    
+    # Pre-calculate if any active comp is LIVE for the Auto-Refresh Timer
+    active_comps = [c for c in comps if not c.get('archived', False)]
+    any_live_matches = False
+    for comp in active_comps:
+        c_pairings = [p for p in pairings if p["competition_id"] == comp["id"]]
+        if get_comp_status(c_pairings) == "LIVE":
+            any_live_matches = True
+            break
+            
+    if any_live_matches:
+        # Visible 2-minute Auto-Refresh Countdown (Only loads if a match is LIVE)
+        st.html("""
+        <div style="text-align: center; color: #8bc34a; font-size: 13px; font-weight: bold; margin-bottom: 5px; margin-top: 5px;">
+            🔴 LIVE: Auto-refreshing in <span id="timer-span">120</span>s
+        </div>
         <script>
-        setTimeout(function() {
-            window.parent.location.reload();
-        }, 120000);
+        (function() {
+            if (window.liveRefreshInterval) clearInterval(window.liveRefreshInterval);
+            let time = 120;
+            window.liveRefreshInterval = setInterval(() => {
+                time--;
+                let span = document.getElementById('timer-span');
+                if (span) span.innerText = time;
+                if (time <= 0) {
+                    clearInterval(window.liveRefreshInterval);
+                    window.location.reload();
+                }
+            }, 1000);
+        })();
         </script>
-        """,
-        height=0,
-        width=0
-    )
+        """)
 
     logo_base64 = get_base64_image("app/static/lb_logo.png") or get_base64_image("static/lb_logo.png")
     logo_html = f'<img src="data:image/png;base64,{logo_base64}" width="120" style="margin-bottom: 10px; margin-top: 15px;"/>' if logo_base64 else ""
@@ -343,11 +401,7 @@ if role == "public":
     st.markdown(f"<div style='text-align: center;'>{logo_html}<h2 style='font-weight: 700; margin-top: 0px;'>L&B Match Centre</h2></div>", unsafe_allow_html=True)
     st.divider()
     
-    active_comps = [c for c in comps if not c.get('archived', False)]
-    
     if active_comps:
-        st.write("") # Mobile spacing
-        
         c_yr, c_cat = st.columns([1, 2])
         with c_yr:
             public_years = sorted(list(set([c.get('year', datetime.now(ireland_tz).year) for c in active_comps if c.get('year')])), reverse=True)
@@ -371,8 +425,17 @@ if role == "public":
             lb, opp = calculate_overall_score(comp_pairings)
             status = get_comp_status(comp_pairings)
             hide_names, reveal_time = should_hide_names(comp)
+            comp_updated_time = get_comp_updated_time(comp_pairings)
             
-            st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-bottom: 2px; margin-top: 30px;'>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
+            # Inline Refresh Button Layout
+            c1, c2, c3 = st.columns([1, 8, 1])
+            with c2:
+                st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-bottom: 2px; margin-top: 25px;'>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
+            with c3:
+                st.markdown("<div style='margin-top: 22px;'></div>", unsafe_allow_html=True)
+                if st.button("↻", key=f"refresh_{comp['id']}", help="Refresh"):
+                    fetch_all.clear(); st.rerun()
+
             match_dt = f"📅 {format_date_display(comp.get('match_date', 'TBD'))}"
             if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
             st.markdown(f"<p style='text-align: center; color: #555; font-size: 15px;'>{match_dt}</p>", unsafe_allow_html=True)
@@ -381,9 +444,8 @@ if role == "public":
             
             st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team']), unsafe_allow_html=True)
             
-            # Auto-expand the pairings if the match is LIVE so it doesn't collapse on refresh
             is_live_comp = (status == "LIVE")
-            with st.expander(f"View Pairings (Updated: {datetime.now(ireland_tz).strftime('%H:%M')})", expanded=is_live_comp):
+            with st.expander(f"View Pairings (Updated: {comp_updated_time})", expanded=is_live_comp):
                 if not comp_pairings:
                     st.write("Pairings to be announced.")
                 for i, p in enumerate(comp_pairings, start=1):
@@ -392,13 +454,6 @@ if role == "public":
                     if i < len(comp_pairings):
                         st.write("---")
             st.divider()
-            
-        # Relocated Manual Refresh Button to the bottom
-        st.write("")
-        if st.button("↻ Refresh Scores Manually", use_container_width=True): 
-            fetch_all.clear()
-            st.rerun()
-
     else:
         st.info("No active competitions.")
 
@@ -414,7 +469,15 @@ elif role == "manager":
     comp = next((c for c in comps if generate_comp_id(c) == provided_id and c.get('access_code') == provided_code), None)
     
     if comp:
-        st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-top: 15px;'>Manage:<br>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
+        # Inline Refresh Button Layout
+        c1, c2, c3 = st.columns([1, 8, 1])
+        with c2:
+            st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-top: 15px;'>Manage:<br>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
+        with c3:
+            st.markdown("<div style='margin-top: 25px;'></div>", unsafe_allow_html=True)
+            if st.button("↻", key=f"mgr_refresh_{comp['id']}", help="Refresh"):
+                fetch_all.clear(); st.rerun()
+
         match_dt = f"📅 {format_date_display(comp.get('match_date', 'TBD'))}"
         if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
         st.markdown(f"<p style='text-align: center; color: #555; font-size: 15px;'>{match_dt}</p>", unsafe_allow_html=True)
@@ -427,11 +490,6 @@ elif role == "manager":
         
         st.markdown(f"<p style='text-align: center; margin-bottom: 8px; font-size: 18px;'>Live Score: L&B <b>{lb}</b> - <b>{opp}</b> {comp['opposition_team']}</p>", unsafe_allow_html=True)
         st.markdown(f"<div style='text-align: center; margin-bottom: 25px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 6px 16px; border-radius: 6px; font-weight: bold; font-size: 14px;'>{status}</span></div>", unsafe_allow_html=True)
-        
-        if st.button("↻ Refresh Page", use_container_width=True):
-            fetch_all.clear()
-            st.rerun()
-            
         st.divider()
         
         if not comp_pairings: st.info("No matches added to this competition yet.")
@@ -451,8 +509,9 @@ elif role == "manager":
                 
                 if st.button("SAVE SCORE", key=f"btn_{p['id']}", type="primary", use_container_width=True):
                     new_leader = get_leader_from_score(sc)
+                    now_str = datetime.now(ireland_tz).strftime("%Y-%m-%dT%H:%M:%S") # Update Timestamp
                     supabase.table("pairings").update({
-                        "hole": h, "score": sc, "status": "FINISHED" if fin else "LIVE", "leader": new_leader
+                        "hole": h, "score": sc, "status": "FINISHED" if fin else "LIVE", "leader": new_leader, "updated_at": now_str
                     }).eq("id", p['id']).execute()
                     fetch_all.clear() 
                     st.success("Match Updated Successfully!"); time.sleep(1.5); st.rerun()
@@ -646,13 +705,15 @@ elif role == "admin":
                                 existing = [p for p in pairings if p["competition_id"] == target_comp_id]
                                 next_order = (max([p.get('display_order', 0) for p in existing], default=0)) + 1
                                 
+                                now_str = datetime.now(ireland_tz).strftime("%Y-%m-%dT%H:%M:%S")
                                 supabase.table('pairings').insert({
                                     "competition_id": target_comp_id,
                                     "landb_player": lb_player_input, 
                                     "opposition_player": opp_player_input,
                                     "venue": match_venue, "hole": "1", "score": "All Square",
                                     "status": "Not Started", "leader": "Tied",
-                                    "display_order": next_order
+                                    "display_order": next_order,
+                                    "updated_at": now_str
                                 }).execute()
                                 
                                 fetch_all.clear()
@@ -695,11 +756,13 @@ elif role == "admin":
                             
                             st.write("")
                             if st.form_submit_button("Update Match", use_container_width=True):
+                                now_str = datetime.now(ireland_tz).strftime("%Y-%m-%dT%H:%M:%S")
                                 supabase.table('pairings').update({
                                     "landb_player": e_lb, 
                                     "opposition_player": e_opp, 
                                     "venue": e_venue,
-                                    "display_order": e_order
+                                    "display_order": e_order,
+                                    "updated_at": now_str
                                 }).eq('id', p_data['id']).execute()
                                 
                                 fetch_all.clear() 
