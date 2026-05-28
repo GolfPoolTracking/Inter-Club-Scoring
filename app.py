@@ -522,7 +522,7 @@ if role == "public":
                 
                 # Auto-expand the pairings if the match is LIVE so it doesn't collapse on refresh
                 is_live_comp = (status == "LIVE")
-                with st.expander(f"View Pairings (Updated: {comp_updated_time})", expanded=is_live_comp):
+                with st.expander(f"View Matches (Updated: {comp_updated_time})", expanded=is_live_comp):
                     if not comp_pairings:
                         st.write("Pairings to be announced.")
                     for i, p in enumerate(comp_pairings, start=1):
