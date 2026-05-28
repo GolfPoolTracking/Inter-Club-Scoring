@@ -85,6 +85,7 @@ components.html(
     width=0
 )
 
+
 # Inject Mobile-Optimized CSS, Meta Tags, and Inter font safely
 st.markdown("""
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
@@ -98,6 +99,11 @@ st.markdown("""
 /* Blanket Font Application for 100% UI Consistency */
 html, body, [class*="css"], [class*="st-"], div, p, h1, h2, h3, h4, h5, h6, span, label, input, textarea, select, button, a { 
     font-family: 'Inter', sans-serif !important; 
+}
+
+/* CRITICAL FIX: Restore Streamlit's native icon fonts to prevent ligature text bleeding */
+.material-icons, .material-symbols-rounded, [data-testid="stIconMaterial"], [class*="icon"], [class*="stIcon"], i {
+    font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
 }
 
 /* Hide Streamlit Chrome */
@@ -122,7 +128,7 @@ div[data-baseweb="select"] > div {
 /* Mobile Optimization: Fat-finger friendly buttons */
 .stButton > button {
     min-height: 55px !important;
-    font-size: 16px !important;
+    font-size: 18px !important;
     font-weight: 600 !important;
     border-radius: 8px !important;
 }
@@ -286,9 +292,6 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
 
     is_started = p['status'] in ["LIVE", "FINISHED"]
     tied_text = "A/S" if is_started else "ALL SQUARE"
-
-    # Score Wrapper ensures scores and hole details perfectly align at the bottom edge
-    score_wrapper_style = "height: 48px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;"
 
     if p['leader'] == 'L&B':
         lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 6px; font-weight: 600; border-radius: 5px; width: 100%; box-sizing: border-box;'>{p['score']}</div>"
@@ -491,7 +494,7 @@ if role == "public":
                     if not comp_pairings:
                         st.write("Pairings to be announced.")
                     for i, p in enumerate(comp_pairings, start=1):
-                        st.markdown(f"<div style='text-align:center; font-size:14px; font-weight: 700; opacity: 0.6; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='text-align:center; font-size:14px; font-weight: bold; opacity: 0.6; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
                         st.markdown(generate_pairing_html(p, "public", hide_names, reveal_time, show_venue=True, match_index=i), unsafe_allow_html=True)
                         if i < len(comp_pairings):
                             st.write("---")
