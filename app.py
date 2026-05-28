@@ -118,12 +118,15 @@ body {
     user-select: none;
 }
 
-/* Mobile Optimization: Consistent Touch Targets for ALL Inputs & Dropdowns */
+/* Mobile Optimization: Uniform Input & Dropdown Sizing (Fixed Time/Date mismatch) */
 div[data-baseweb="select"] > div,
-div[data-baseweb="input"] > div {
-    min-height: 50px !important;
+div[data-baseweb="input"] {
     font-size: 16px !important;
     border-radius: 8px !important;
+}
+
+input {
+    font-size: 16px !important;
 }
 
 /* Mobile Optimization: Fat-finger friendly buttons */
