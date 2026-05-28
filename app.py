@@ -261,7 +261,7 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
     opp_name_display = p.get('opposition_player', 'TBD')
 
     is_started = p['status'] in ["LIVE", "FINISHED"]
-    tied_text = "&nbsp;" if is_started else "ALL SQUARE"
+    tied_text = "A/S" if is_started else "ALL SQUARE"
 
     if p['leader'] == 'L&B':
         lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px;'>{p['score']}</div>"
