@@ -210,6 +210,7 @@ def get_formatted_time(iso_str):
     if not iso_str: return "N/A"
     try:
         dt = pd.to_datetime(iso_str)
+        # Handle older legacy timestamps missing timezone
         if dt.tzinfo is None:
             dt = dt.tz_localize('UTC')
         return dt.astimezone(ireland_tz).strftime("%H:%M")
@@ -219,7 +220,7 @@ def get_formatted_time(iso_str):
 def get_comp_updated_time(pairings):
     times = [p.get('updated_at') for p in pairings if p.get('updated_at')]
     if not times:
-        return datetime.now(ireland_tz).strftime("%H:%M") # Fallback to current if no DB times
+        return datetime.now(ireland_tz).strftime("%H:%M")
     try:
         dts = []
         for t in times:
@@ -280,6 +281,9 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
 
     is_started = p['status'] in ["LIVE", "FINISHED"]
     tied_text = "A/S" if is_started else "ALL SQUARE"
+
+    # Score Wrapper ensures scores and hole details perfectly align at the bottom edge
+    score_wrapper_style = "height: 48px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;"
 
     if p['leader'] == 'L&B':
         lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px; width: 100%; box-sizing: border-box;'>{p['score']}</div>"
@@ -374,45 +378,14 @@ role = query_params.get("role", "public")
 
 # --- VIEW 1: PUBLIC SCOREBOARD ---
 if role == "public":
-    
-    # Pre-calculate if any active comp is LIVE for the Auto-Refresh Timer
-    active_comps = [c for c in comps if not c.get('archived', False)]
-    any_live_matches = False
-    for comp in active_comps:
-        c_pairings = [p for p in pairings if p["competition_id"] == comp["id"]]
-        if get_comp_status(c_pairings) == "LIVE":
-            any_live_matches = True
-            break
-            
-    if any_live_matches:
-        # Visible 2-minute Auto-Refresh Countdown (Only loads if a match is LIVE)
-        st.html("""
-        <div style="text-align: center; color: #8bc34a; font-size: 13px; font-weight: bold; margin-bottom: 5px; margin-top: 5px;">
-            🔴 LIVE: Auto-refreshing in <span id="timer-span">120</span>s
-        </div>
-        <script>
-        (function() {
-            if (window.liveRefreshInterval) clearInterval(window.liveRefreshInterval);
-            let time = 120;
-            window.liveRefreshInterval = setInterval(() => {
-                time--;
-                let span = document.getElementById('timer-span');
-                if (span) span.innerText = time;
-                if (time <= 0) {
-                    clearInterval(window.liveRefreshInterval);
-                    window.location.reload();
-                }
-            }, 1000);
-        })();
-        </script>
-        """)
-
     logo_base64 = get_base64_image("app/static/lb_logo.png") or get_base64_image("static/lb_logo.png")
     # Added white background & rounded corners to perfectly support iOS Dark Mode
     logo_html = f'<img src="data:image/png;base64,{logo_base64}" width="120" style="background-color: white; border-radius: 12px; padding: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 10px; margin-top: 15px;"/>' if logo_base64 else ""
 
     st.markdown(f"<div style='text-align: center;'>{logo_html}<h2 style='font-weight: 700; margin-top: 0px;'>L&B Match Centre</h2></div>", unsafe_allow_html=True)
     st.divider()
+    
+    active_comps = [c for c in comps if not c.get('archived', False)]
     
     if active_comps:
         st.write("") # Mobile spacing
@@ -426,43 +399,85 @@ if role == "public":
                 
         if not filtered_comps:
             st.info("No competitions match your filters.")
-            
-        for comp in filtered_comps:
-            comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], 
-                                   key=lambda x: x.get('display_order', 0))
-            
-            lb, opp = calculate_overall_score(comp_pairings)
-            status = get_comp_status(comp_pairings)
-            hide_names, reveal_time = should_hide_names(comp)
-            comp_updated_time = get_comp_updated_time(comp_pairings)
-            
-            # Inline HTML Refresh Button next to Comp Title (avoids Streamlit mobile column stacking)
-            st.markdown(f"""
-            <div style='display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 30px; margin-bottom: 5px;'>
-                <h3 style='margin: 0; font-weight: 700; text-align: center;'>{get_comp_display_name(comp)}</h3>
-                <a href="javascript:window.location.reload();" style="text-decoration: none; font-size: 20px; color: inherit; opacity: 0.5; padding: 5px;" title="Refresh Scores">↻</a>
-            </div>
-            """, unsafe_allow_html=True)
+        else:
+            # Pre-calculate if any filtered comp is LIVE for the Auto-Refresh Timer
+            any_live_matches = False
+            for comp in filtered_comps:
+                c_pairings = [p for p in pairings if p["competition_id"] == comp["id"]]
+                if get_comp_status(c_pairings) == "LIVE":
+                    any_live_matches = True
+                    break
+                    
+            if any_live_matches:
+                # Visible 2-minute Auto-Refresh Countdown (Only loads if a match is LIVE)
+                st.html("""
+                <div style="text-align: center; color: #8bc34a; font-size: 14px; font-weight: bold; margin-bottom: 25px; margin-top: 10px; background-color: rgba(139, 195, 74, 0.1); padding: 8px; border-radius: 8px;">
+                    🔴 LIVE: Auto-refreshing in <span id="timer-span">120</span>s
+                </div>
+                <script>
+                (function() {
+                    // Clear any existing intervals if Streamlit re-renders part of the DOM
+                    if (window.liveRefreshInterval) clearInterval(window.liveRefreshInterval);
+                    
+                    let time = 120;
+                    window.liveRefreshInterval = setInterval(() => {
+                        time--;
+                        // Fallback check to find span in child or parent frame depending on Streamlit version
+                        let span = document.getElementById('timer-span');
+                        if (!span && window.parent) span = window.parent.document.getElementById('timer-span');
+                        
+                        if (span) span.innerText = time;
+                        
+                        if (time <= 0) {
+                            clearInterval(window.liveRefreshInterval);
+                            if (window.parent) {
+                                window.parent.location.reload();
+                            } else {
+                                window.location.reload();
+                            }
+                        }
+                    }, 1000);
+                })();
+                </script>
+                """)
 
-            match_dt = f"📅 {format_date_display(comp.get('match_date', 'TBD'))}"
-            if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
-            st.markdown(f"<p style='text-align: center; opacity: 0.7; font-size: 15px; margin-top: -5px;'>{match_dt}</p>", unsafe_allow_html=True)
-            
-            st.markdown(f"<div style='text-align: center; margin-bottom: 15px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 6px 16px; border-radius: 6px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
-            
-            st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team']), unsafe_allow_html=True)
-            
-            # Auto-expand the pairings if the match is LIVE so it doesn't collapse on refresh
-            is_live_comp = (status == "LIVE")
-            with st.expander(f"View Pairings (Updated: {comp_updated_time})", expanded=is_live_comp):
-                if not comp_pairings:
-                    st.write("Pairings to be announced.")
-                for i, p in enumerate(comp_pairings, start=1):
-                    st.markdown(f"<div style='text-align:center; font-size:14px; font-weight: bold; opacity: 0.6; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
-                    st.markdown(generate_pairing_html(p, "public", hide_names, reveal_time, show_venue=True, match_index=i), unsafe_allow_html=True)
-                    if i < len(comp_pairings):
-                        st.write("---")
-            st.divider()
+            for comp in filtered_comps:
+                comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], 
+                                       key=lambda x: x.get('display_order', 0))
+                
+                lb, opp = calculate_overall_score(comp_pairings)
+                status = get_comp_status(comp_pairings)
+                hide_names, reveal_time = should_hide_names(comp)
+                comp_updated_time = get_comp_updated_time(comp_pairings)
+                
+                st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-bottom: 8px; margin-top: 20px;'>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
+                
+                # Big, obvious Refresh Button directly under title
+                c1, c2, c3 = st.columns([1, 2, 1])
+                with c2:
+                    if st.button("↻ Refresh Scores", key=f"refresh_{comp['id']}", use_container_width=True):
+                        fetch_all.clear()
+                        st.rerun()
+
+                match_dt = f"📅 {format_date_display(comp.get('match_date', 'TBD'))}"
+                if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
+                st.markdown(f"<p style='text-align: center; opacity: 0.7; font-size: 15px; margin-top: -5px;'>{match_dt}</p>", unsafe_allow_html=True)
+                
+                st.markdown(f"<div style='text-align: center; margin-bottom: 15px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 6px 16px; border-radius: 6px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
+                
+                st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team']), unsafe_allow_html=True)
+                
+                # Auto-expand the pairings if the match is LIVE so it doesn't collapse on refresh
+                is_live_comp = (status == "LIVE")
+                with st.expander(f"View Pairings (Updated: {comp_updated_time})", expanded=is_live_comp):
+                    if not comp_pairings:
+                        st.write("Pairings to be announced.")
+                    for i, p in enumerate(comp_pairings, start=1):
+                        st.markdown(f"<div style='text-align:center; font-size:14px; font-weight: bold; opacity: 0.6; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
+                        st.markdown(generate_pairing_html(p, "public", hide_names, reveal_time, show_venue=True, match_index=i), unsafe_allow_html=True)
+                        if i < len(comp_pairings):
+                            st.write("---")
+                st.divider()
 
     else:
         st.info("No active competitions.")
@@ -479,12 +494,14 @@ elif role == "manager":
     comp = next((c for c in comps if generate_comp_id(c) == provided_id and c.get('access_code') == provided_code), None)
     
     if comp:
-        st.markdown(f"""
-        <div style='display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 15px; margin-bottom: 5px;'>
-            <h3 style='margin: 0; font-weight: 700; text-align: center;'>Manage:<br>{get_comp_display_name(comp)}</h3>
-            <a href="javascript:window.location.reload();" style="text-decoration: none; font-size: 20px; color: inherit; opacity: 0.5; padding: 5px;" title="Refresh Scores">↻</a>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-top: 15px;'>Manage:<br>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
+        
+        # Big, obvious Refresh Button directly under title
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            if st.button("↻ Refresh Scores", key=f"mgr_refresh_{comp['id']}", use_container_width=True):
+                fetch_all.clear()
+                st.rerun()
 
         match_dt = f"📅 {format_date_display(comp.get('match_date', 'TBD'))}"
         if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
@@ -517,7 +534,10 @@ elif role == "manager":
                 
                 if st.button("SAVE SCORE", key=f"btn_{p['id']}", type="primary", use_container_width=True):
                     new_leader = get_leader_from_score(sc)
-                    now_str = datetime.now(ireland_tz).strftime("%Y-%m-%dT%H:%M:%S") # Update Timestamp
+                    
+                    # Ensure timestamp saves strictly as UTC timezone aware so it corrects perfectly for Irish Summer Time
+                    now_str = datetime.now(ZoneInfo("UTC")).isoformat()
+                    
                     supabase.table("pairings").update({
                         "hole": h, "score": sc, "status": "FINISHED" if fin else "LIVE", "leader": new_leader, "updated_at": now_str
                     }).eq("id", p['id']).execute()
@@ -713,7 +733,7 @@ elif role == "admin":
                                 existing = [p for p in pairings if p["competition_id"] == target_comp_id]
                                 next_order = (max([p.get('display_order', 0) for p in existing], default=0)) + 1
                                 
-                                now_str = datetime.now(ireland_tz).strftime("%Y-%m-%dT%H:%M:%S")
+                                now_str = datetime.now(ZoneInfo("UTC")).isoformat()
                                 supabase.table('pairings').insert({
                                     "competition_id": target_comp_id,
                                     "landb_player": lb_player_input, 
@@ -764,7 +784,7 @@ elif role == "admin":
                             
                             st.write("")
                             if st.form_submit_button("Update Match", use_container_width=True):
-                                now_str = datetime.now(ireland_tz).strftime("%Y-%m-%dT%H:%M:%S")
+                                now_str = datetime.now(ZoneInfo("UTC")).isoformat()
                                 supabase.table('pairings').update({
                                     "landb_player": e_lb, 
                                     "opposition_player": e_opp, 
@@ -871,16 +891,18 @@ elif role == "admin":
                                 }).eq("id", m_data['id']).execute()
                                 fetch_all.clear()
                                 st.success("Updated Template!"); time.sleep(1.5); st.rerun()
-                    
-                    with st.popover(f"🚨 Delete {m_data['comp_name']} 🚨", use_container_width=True):
-                        st.warning(f"Confirm deletion of {m_data['comp_name']} from Master List?")
-                        del_master_placeholder = st.empty()
-                        if del_master_placeholder.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary", use_container_width=True):
-                            del_master_placeholder.empty()
-                            supabase.table("competitions_master").delete().eq("id", m_data['id']).execute()
-                            fetch_all.clear()
-                            st.success("Deleted from Master List.")
-                            time.sleep(1.5)
-                            st.rerun()
-                        else:
-                            st.info("No master competitions match this filter.")
+                        
+                        with st.popover(f"🚨 Delete {m_data['comp_name']} 🚨", use_container_width=True):
+                            st.warning(f"Confirm deletion of {m_data['comp_name']} from Master List?")
+                            del_master_placeholder = st.empty()
+                            if del_master_placeholder.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary", use_container_width=True):
+                                del_master_placeholder.empty()
+                                supabase.table("competitions_master").delete().eq("id", m_data['id']).execute()
+                                fetch_all.clear()
+                                st.success("Deleted from Master List.")
+                                time.sleep(1.5)
+                                st.rerun()
+                    else:
+                        st.info("No master competitions match this filter.")
+                else:
+                    st.info("No master competitions found to edit.")
