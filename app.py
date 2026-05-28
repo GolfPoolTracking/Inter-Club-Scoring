@@ -18,7 +18,6 @@ def generate_random_code(length=6):
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
 # --- CRITICAL FIX: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
-# Restored safely to components.html to prevent raw text bleeding.
 components.html(
     """
     <script>
@@ -263,6 +262,33 @@ def should_hide_names(comp):
     except Exception:
         return False, None
 
+def is_comp_active(comp):
+    """Determines if a comp should be shown publicly based on manual and auto-archive settings."""
+    # 1. Manual Archive check
+    if comp.get('archived', False):
+        return False
+        
+    # 2. Auto-Archive logic (defaults to False for older records without the flag)
+    if comp.get('auto_archive', False):
+        if comp.get('match_date') and comp.get('start_time'):
+            try:
+                dt_str = f"{comp['match_date']} {comp['start_time']}"
+                dt_obj = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
+                dt_aware = dt_obj.replace(tzinfo=ireland_tz)
+                
+                archive_hours = comp.get('auto_archive_hours')
+                if archive_hours is None:
+                    archive_hours = 24
+                
+                archive_time = dt_aware + timedelta(hours=int(archive_hours))
+                
+                if datetime.now(ireland_tz) > archive_time:
+                    return False
+            except Exception:
+                pass # If parsing fails, default to showing it safely
+                
+    return True
+
 def get_comp_display_name(c):
     r = f" - {c['round']}" if c.get('round') else ""
     return f"{c['category']} {c['comp_name']}{r}"
@@ -292,6 +318,9 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
 
     is_started = p['status'] in ["LIVE", "FINISHED"]
     tied_text = "A/S" if is_started else "ALL SQUARE"
+
+    # Score Wrapper ensures scores and hole details perfectly align at the bottom edge
+    score_wrapper_style = "height: 48px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;"
 
     if p['leader'] == 'L&B':
         lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 6px; font-weight: 600; border-radius: 5px; width: 100%; box-sizing: border-box;'>{p['score']}</div>"
@@ -358,6 +387,7 @@ SCORE_OPTIONS = [f"{i} Up" for i in range(10, 0, -1)] + ["All Square"] + [f"{i} 
 VENUE_OPTIONS = ["Home", "Away"]
 CATEGORY_OPTIONS = ["Mens", "Womens", "Boys", "Girls", "Mixed"]
 ROUND_OPTIONS = ["Round 1", "Round 2", "Round 3", "Round 4", "Quarter-Final", "Semi-Final", "Final"]
+ARCHIVE_HOURS_OPTIONS = [24, 48, 72, 96, 120, 144, 168]
 
 # --- DATA FETCHING ---
 @st.cache_data(ttl=10)
@@ -393,7 +423,8 @@ if role == "public":
     st.markdown(f"<div style='text-align: center;'>{logo_html}<h2 style='font-weight: 700; margin-top: 0px;'>L&B Match Centre</h2></div>", unsafe_allow_html=True)
     st.divider()
     
-    active_comps = [c for c in comps if not c.get('archived', False)]
+    # Filter out manually archived AND auto-archived competitions
+    active_comps = [c for c in comps if is_comp_active(c)]
     
     if active_comps:
         st.write("") # Mobile spacing
@@ -617,6 +648,15 @@ elif role == "admin":
                     new_date = st.date_input("Match Date", format="DD/MM/YYYY")
                     new_start_time = st.time_input("Start Time (Optional)", value=None)
                     
+                    st.write("---")
+                    st.markdown("##### 🗄️ Archive Settings")
+                    c_arc1, c_arc2 = st.columns(2)
+                    with c_arc1:
+                        new_auto_archive = st.checkbox("Auto-Archive after match", value=True)
+                    with c_arc2:
+                        new_archive_hours = st.selectbox("Auto-Archive Timer", options=ARCHIVE_HOURS_OPTIONS, format_func=lambda x: f"{x//24} Day{'s' if x>24 else ''} ({x} hrs)")
+                    st.write("---")
+
                     new_hide_mins = st.number_input("Hide Player Names Until (Mins before start)", min_value=0, value=60, step=15)
                     new_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=False)
                     
@@ -639,6 +679,8 @@ elif role == "admin":
                                 "start_time": time_string,
                                 "hide_mins": new_hide_mins,
                                 "always_hide_names": new_always_hide,
+                                "auto_archive": new_auto_archive,
+                                "auto_archive_hours": new_archive_hours,
                                 "archived": False,
                                 "access_code": secure_access_code  
                             }).execute()
@@ -683,13 +725,22 @@ elif role == "admin":
                         parsed_time = safe_time_parse(c_data.get('start_time', ''))
                         e_time = st.time_input("Start Time", value=parsed_time)
                         
+                        st.write("---")
+                        st.markdown("##### 🗄️ Archive Settings")
+                        e_col_aa1, e_col_aa2 = st.columns(2)
+                        with e_col_aa1:
+                            e_auto_archive = st.checkbox("Auto-Archive after match", value=c_data.get('auto_archive', True))
+                            e_archived = st.checkbox("Manually Archive (Hide)", value=c_data.get('archived', False))
+                        with e_col_aa2:
+                            e_archive_hours = st.selectbox("Auto-Archive Timer", options=ARCHIVE_HOURS_OPTIONS, index=safe_index(ARCHIVE_HOURS_OPTIONS, c_data.get('auto_archive_hours', 24)), format_func=lambda x: f"{x//24} Day{'s' if x>24 else ''} ({x} hrs)")
+                        st.write("---")
+                        
                         hide_val = c_data.get('hide_mins')
                         hide_val = int(hide_val) if hide_val is not None else 60
                         e_hide_mins = st.number_input("Hide Player Names Until (Mins before)", min_value=0, value=hide_val, step=15)
                         
                         st.write("")
                         e_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=c_data.get('always_hide_names', False))
-                        e_archived = st.checkbox("Archive Competition (Hide from Public)", value=c_data.get('archived', False))
                         st.write("")
                         
                         if st.form_submit_button("Update Competition", use_container_width=True):
@@ -702,7 +753,7 @@ elif role == "admin":
                                 supabase.table('competitions').update({
                                     "comp_name": e_name, "category": e_cat, "opposition_team": e_opp, 
                                     "round": updated_round_str, "match_date": str(e_date), "year": updated_year, "start_time": updated_time_str,
-                                    "hide_mins": e_hide_mins, "always_hide_names": e_always_hide, "archived": e_archived
+                                    "hide_mins": e_hide_mins, "always_hide_names": e_always_hide, "auto_archive": e_auto_archive, "auto_archive_hours": e_archive_hours, "archived": e_archived
                                 }).eq('id', c_data['id']).execute()
                                 
                                 fetch_all.clear()
@@ -851,7 +902,7 @@ elif role == "admin":
                 c for c in comps 
                 if c.get('year') == admin_year 
                 and (filter_cat_links == "All" or c['category'] == filter_cat_links)
-                and (show_archived or not c.get('archived', False))
+                and (show_archived or is_comp_active(c))
             ]
             
             if filtered_comps_links:
@@ -859,7 +910,7 @@ elif role == "admin":
                     comp_id = generate_comp_id(c)
                     secure_comp_id = f"{comp_id}_{c.get('access_code', '000000')}"
                     
-                    display_title = f"{get_comp_display_name(c)} {'(Archived)' if c.get('archived') else ''}"
+                    display_title = f"{get_comp_display_name(c)} {'(Archived)' if not is_comp_active(c) else ''}"
                     
                     st.markdown(f"**{display_title}**")
                     st.code(f"{APP_BASE_URL}/?role=manager&comp={secure_comp_id}", language="text")
