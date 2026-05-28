@@ -884,5 +884,3 @@ elif role == "admin":
                             st.rerun()
                     else:
                         st.info("No master competitions match this filter.")
-                else:
-                    st.info("No master competitions found to edit.")
