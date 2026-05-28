@@ -8,6 +8,7 @@ import urllib.parse
 import base64
 import random
 import string
+import streamlit.components.v1 as components
 
 # --- Random code generator for unique keys ---
 def generate_random_code(length=6):
@@ -16,14 +17,16 @@ def generate_random_code(length=6):
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CRITICAL FIX v9: NATIVE JAVASCRIPT KEYBOARD BLOCKER & TOGGLE FIX ---
-st.html(
+# --- CRITICAL FIX v7: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
+components.html(
     """
     <script>
-    (function() {
-        // 1. Prevent keyboard popups on Select, Date, and Time inputs globally
+    if (window.parent && window.parent.document) {
+        const doc = window.parent.document;
+        
+        // 1. Prevent keyboard popups on Select, Date, and Time inputs
         const observer = new MutationObserver(function(mutations) {
-            const inputs = document.querySelectorAll(
+            const inputs = doc.querySelectorAll(
                 'div[data-baseweb="select"] input, div[data-testid="stDateInput"] input, div[data-testid="stTimeInput"] input'
             );
             inputs.forEach(function(input) {
@@ -34,18 +37,18 @@ st.html(
                 }
             });
         });
-        observer.observe(document.body, { childList: true, subtree: true });
+        observer.observe(doc.body, { childList: true, subtree: true });
 
         // 2. Universal Mobile Toggle Fix
         let lastTappedContainer = null;
 
-        document.addEventListener('touchstart', function(e) {
+        doc.addEventListener('touchstart', function(e) {
             const inputContainer = e.target.closest(
                 'div[data-baseweb="select"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"]'
             );
 
             if (inputContainer) {
-                const popover = document.querySelector(
+                const popover = doc.querySelector(
                     'div[data-baseweb="popover"], div[data-baseweb="calendar"]'
                 );
 
@@ -56,7 +59,7 @@ st.html(
                     const esc = new KeyboardEvent('keydown', {
                         key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true
                     });
-                    document.dispatchEvent(esc);
+                    doc.dispatchEvent(esc);
 
                     const input = inputContainer.querySelector('input');
                     if (input) input.blur();
@@ -70,9 +73,11 @@ st.html(
                 }
             }
         }, true);
-    })();
+    }
     </script>
-    """
+    """,
+    height=0,
+    width=0
 )
 
 # Inject Mobile-Optimized CSS, Meta Tags, and Noto Serif font safely
@@ -276,9 +281,6 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
     is_started = p['status'] in ["LIVE", "FINISHED"]
     tied_text = "A/S" if is_started else "ALL SQUARE"
 
-    # Score Wrapper ensures scores and hole details perfectly align at the bottom edge
-    score_wrapper_style = "height: 48px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;"
-
     if p['leader'] == 'L&B':
         lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px; width: 100%; box-sizing: border-box;'>{p['score']}</div>"
     elif p['leader'] == 'Tied':
@@ -297,36 +299,46 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
     p_status_color = "gray" if p['status'] == "Not Started" else ("darkred" if p['status'] == "FINISHED" else "#8bc34a")
     
     should_show = (view_mode == "manager") or show_venue
-    venue_html = f"<div style='font-size: 12px; color: gray; margin-top: 6px;'>📍 {p.get('venue', 'Unknown')}</div>" if should_show else ""
+    venue_html = f"<div style='font-size: 12px; opacity: 0.6; margin-top: 6px;'>📍 {p.get('venue', 'Unknown')}</div>" if should_show else ""
     
     # Conditionally display the hole and THRU text only if the match has started
     if p.get('status', '').strip().lower() != "not started":
-        hole_html = f"<div style='font-size: 10px; color: gray; font-weight: bold; text-transform: uppercase; line-height: 1; margin-bottom: 4px;'>Thru</div><div style='background-color: black; color: white; padding: 4px 8px; font-size: 14px; font-weight: bold; border-radius: 4px; line-height: 1;'>{hole_val}</div>"
+        hole_html = f"<div style='font-size: 10px; opacity: 0.6; font-weight: bold; text-transform: uppercase; line-height: 1; margin-bottom: 4px;'>Thru</div><div style='background-color: black; color: white; padding: 6px; font-size: 14px; font-weight: bold; border-radius: 4px; line-height: 1;'>{hole_val}</div>"
     else:
-        hole_html = "" # Remains completely blank to maintain alignment without showing hole 1
+        hole_html = f"<div style='padding: 6px; visibility: hidden;'>Spacer</div>"
 
     # Match Level Updated Time
     match_updated = get_formatted_time(p.get('updated_at'))
-    updated_html = f"<div style='font-size: 10px; color: gray; margin-top: 5px; font-weight: normal;'>Updated {match_updated}</div>" if match_updated != "N/A" else ""
+    updated_html = f"<div style='font-size: 10px; opacity: 0.6; margin-top: 5px; font-weight: normal;'>Updated {match_updated}</div>" if match_updated != "N/A" else ""
         
-    return f"""
-    <div style='display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 15px;'>
-        <div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>
-            <div style='{score_wrapper_style}'>{lb_score_html}</div>
-            <div style='font-weight: bold; font-size: 16px; margin-top: 8px; line-height: 1.3;'>{lb_name_display}</div>
+    # DECOUPLED ALIGNMENT: 
+    # Top row perfectly aligns the Score and Hole boxes to the bottom edge.
+    # Bottom row perfectly aligns the Names and Status to the top edge.
+    top_row = f"""
+    <div style='display: flex; justify-content: space-between; align-items: flex-end; width: 100%;'>
+        <div style='flex: 1; text-align: center; padding: 0 4px;'>{lb_score_html}</div>
+        <div style='flex: 1; text-align: center; padding: 0 4px;'>{hole_html}</div>
+        <div style='flex: 1; text-align: center; padding: 0 4px;'>{opp_score_html}</div>
+    </div>
+    """
+    
+    bottom_row = f"""
+    <div style='display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-top: 8px; margin-bottom: 15px;'>
+        <div style='flex: 1; text-align: center; padding: 0 4px;'>
+            <div style='font-weight: bold; font-size: 15px; line-height: 1.2;'>{lb_name_display}</div>
             {venue_html}
         </div>
-        <div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>
-            <div style='{score_wrapper_style}'>{hole_html}</div>
-            <div style='background-color: {p_status_color}; color: white; padding: 4px; font-size: 12px; font-weight: bold; border-radius: 4px; margin-top: 5px;'>{p['status']}</div>
+        <div style='flex: 1; text-align: center; padding: 0 4px;'>
+            <div style='background-color: {p_status_color}; color: white; padding: 4px; font-size: 12px; font-weight: bold; border-radius: 4px;'>{p['status']}</div>
             {updated_html}
         </div>
-        <div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>
-            <div style='{score_wrapper_style}'>{opp_score_html}</div>
-            <div style='font-weight: bold; font-size: 16px; margin-top: 8px; line-height: 1.3;'>{opp_name_display}</div>
+        <div style='flex: 1; text-align: center; padding: 0 4px;'>
+            <div style='font-weight: bold; font-size: 15px; line-height: 1.2;'>{opp_name_display}</div>
         </div>
     </div>
     """
+    
+    return top_row + bottom_row
 
 # --- LIST DEFINITIONS ---
 HOLE_OPTIONS = [str(i) for i in range(1, 19)] + [f"Extra Hole {i}" for i in range(1, 10)]
@@ -396,23 +408,20 @@ if role == "public":
         """)
 
     logo_base64 = get_base64_image("app/static/lb_logo.png") or get_base64_image("static/lb_logo.png")
-    logo_html = f'<img src="data:image/png;base64,{logo_base64}" width="120" style="margin-bottom: 10px; margin-top: 15px;"/>' if logo_base64 else ""
+    # Added white background & rounded corners to perfectly support iOS Dark Mode
+    logo_html = f'<img src="data:image/png;base64,{logo_base64}" width="120" style="background-color: white; border-radius: 12px; padding: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 10px; margin-top: 15px;"/>' if logo_base64 else ""
 
     st.markdown(f"<div style='text-align: center;'>{logo_html}<h2 style='font-weight: 700; margin-top: 0px;'>L&B Match Centre</h2></div>", unsafe_allow_html=True)
     st.divider()
     
     if active_comps:
-        c_yr, c_cat = st.columns([1, 2])
-        with c_yr:
-            public_years = sorted(list(set([c.get('year', datetime.now(ireland_tz).year) for c in active_comps if c.get('year')])), reverse=True)
-            if not public_years: public_years = [datetime.now(ireland_tz).year]
-            sel_year = st.selectbox("Year", public_years)
-        with c_cat:
-            filter_cat = st.radio("Category", ["All"] + CATEGORY_OPTIONS, horizontal=True)
+        st.write("") # Mobile spacing
+        
+        filter_cat = st.radio("Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, label_visibility="collapsed")
             
         filtered_comps = [
             c for c in active_comps 
-            if c.get('year') == sel_year and (filter_cat == "All" or c['category'] == filter_cat)
+            if (filter_cat == "All" or c['category'] == filter_cat)
         ]
                 
         if not filtered_comps:
@@ -427,33 +436,34 @@ if role == "public":
             hide_names, reveal_time = should_hide_names(comp)
             comp_updated_time = get_comp_updated_time(comp_pairings)
             
-            # Inline Refresh Button Layout
-            c1, c2, c3 = st.columns([1, 8, 1])
-            with c2:
-                st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-bottom: 2px; margin-top: 25px;'>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
-            with c3:
-                st.markdown("<div style='margin-top: 22px;'></div>", unsafe_allow_html=True)
-                if st.button("↻", key=f"refresh_{comp['id']}", help="Refresh"):
-                    fetch_all.clear(); st.rerun()
+            # Inline HTML Refresh Button next to Comp Title (avoids Streamlit mobile column stacking)
+            st.markdown(f"""
+            <div style='display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 30px; margin-bottom: 5px;'>
+                <h3 style='margin: 0; font-weight: 700; text-align: center;'>{get_comp_display_name(comp)}</h3>
+                <a href="javascript:window.location.reload();" style="text-decoration: none; font-size: 20px; color: inherit; opacity: 0.5; padding: 5px;" title="Refresh Scores">↻</a>
+            </div>
+            """, unsafe_allow_html=True)
 
             match_dt = f"📅 {format_date_display(comp.get('match_date', 'TBD'))}"
             if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
-            st.markdown(f"<p style='text-align: center; color: #555; font-size: 15px;'>{match_dt}</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='text-align: center; opacity: 0.7; font-size: 15px; margin-top: -5px;'>{match_dt}</p>", unsafe_allow_html=True)
             
             st.markdown(f"<div style='text-align: center; margin-bottom: 15px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 6px 16px; border-radius: 6px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
             
             st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team']), unsafe_allow_html=True)
             
+            # Auto-expand the pairings if the match is LIVE so it doesn't collapse on refresh
             is_live_comp = (status == "LIVE")
             with st.expander(f"View Pairings (Updated: {comp_updated_time})", expanded=is_live_comp):
                 if not comp_pairings:
                     st.write("Pairings to be announced.")
                 for i, p in enumerate(comp_pairings, start=1):
-                    st.markdown(f"<div style='text-align:center; font-size:14px; font-weight: bold; color:gray; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='text-align:center; font-size:14px; font-weight: bold; opacity: 0.6; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
                     st.markdown(generate_pairing_html(p, "public", hide_names, reveal_time, show_venue=True, match_index=i), unsafe_allow_html=True)
                     if i < len(comp_pairings):
                         st.write("---")
             st.divider()
+
     else:
         st.info("No active competitions.")
 
@@ -469,18 +479,16 @@ elif role == "manager":
     comp = next((c for c in comps if generate_comp_id(c) == provided_id and c.get('access_code') == provided_code), None)
     
     if comp:
-        # Inline Refresh Button Layout
-        c1, c2, c3 = st.columns([1, 8, 1])
-        with c2:
-            st.markdown(f"<h3 style='text-align: center; font-weight: 700; margin-top: 15px;'>Manage:<br>{get_comp_display_name(comp)}</h3>", unsafe_allow_html=True)
-        with c3:
-            st.markdown("<div style='margin-top: 25px;'></div>", unsafe_allow_html=True)
-            if st.button("↻", key=f"mgr_refresh_{comp['id']}", help="Refresh"):
-                fetch_all.clear(); st.rerun()
+        st.markdown(f"""
+        <div style='display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 15px; margin-bottom: 5px;'>
+            <h3 style='margin: 0; font-weight: 700; text-align: center;'>Manage:<br>{get_comp_display_name(comp)}</h3>
+            <a href="javascript:window.location.reload();" style="text-decoration: none; font-size: 20px; color: inherit; opacity: 0.5; padding: 5px;" title="Refresh Scores">↻</a>
+        </div>
+        """, unsafe_allow_html=True)
 
         match_dt = f"📅 {format_date_display(comp.get('match_date', 'TBD'))}"
         if comp.get('start_time'): match_dt += f" | 🕒 {comp.get('start_time')}"
-        st.markdown(f"<p style='text-align: center; color: #555; font-size: 15px;'>{match_dt}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align: center; opacity: 0.7; font-size: 15px;'>{match_dt}</p>", unsafe_allow_html=True)
         
         comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], 
                                key=lambda x: x.get('display_order', 0))
@@ -495,7 +503,7 @@ elif role == "manager":
         if not comp_pairings: st.info("No matches added to this competition yet.")
             
         for i, p in enumerate(comp_pairings, start=1):
-            st.markdown(f"<div style='text-align:center; font-size:14px; font-weight:bold; color:gray; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:center; font-size:14px; font-weight:bold; opacity: 0.6; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
             st.markdown(generate_pairing_html(p, "manager", hide_names=False, match_index=i), unsafe_allow_html=True)
             
             with st.expander(f"UPDATE MATCH {i} ({p['landb_player']})", expanded=False):
@@ -863,17 +871,17 @@ elif role == "admin":
                                 }).eq("id", m_data['id']).execute()
                                 fetch_all.clear()
                                 st.success("Updated Template!"); time.sleep(1.5); st.rerun()
-                        
-                        with st.popover(f"🚨 Delete {m_data['comp_name']} 🚨", use_container_width=True):
-                            st.warning(f"Confirm deletion of {m_data['comp_name']} from Master List?")
-                            del_master_placeholder = st.empty()
-                            if del_master_placeholder.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary", use_container_width=True):
-                                del_master_placeholder.empty()
-                                supabase.table("competitions_master").delete().eq("id", m_data['id']).execute()
-                                fetch_all.clear()
-                                st.success("Deleted from Master List.")
-                                time.sleep(1.5)
-                                st.rerun()
+                    
+                    with st.popover(f"🚨 Delete {m_data['comp_name']} 🚨", use_container_width=True):
+                        st.warning(f"Confirm deletion of {m_data['comp_name']} from Master List?")
+                        del_master_placeholder = st.empty()
+                        if del_master_placeholder.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary", use_container_width=True):
+                            del_master_placeholder.empty()
+                            supabase.table("competitions_master").delete().eq("id", m_data['id']).execute()
+                            fetch_all.clear()
+                            st.success("Deleted from Master List.")
+                            time.sleep(1.5)
+                            st.rerun()
                     else:
                         st.info("No master competitions match this filter.")
                 else:
