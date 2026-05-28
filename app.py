@@ -882,5 +882,5 @@ elif role == "admin":
                             st.success("Deleted from Master List.")
                             time.sleep(1.5)
                             st.rerun()
-                    else:
-                        st.info("No master competitions match this filter.")
+                        else:
+                            st.info("No master competitions match this filter.")
