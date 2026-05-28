@@ -183,13 +183,23 @@ def get_comp_status(pairings):
     statuses = [p['status'] for p in pairings]
     return "LIVE" if "LIVE" in statuses else ("FINISHED" if all(s == "FINISHED" for s in statuses) else "Not Started")
 
-def calculate_overall_score(pairings):
+def calculate_overall_score(pairings, is_aggregate=False):
     lb, opp = 0.0, 0.0
     for p in pairings:
         if p["status"] in ["LIVE", "FINISHED"]:
-            if p["leader"] == "L&B": lb += 1.0
-            elif p["leader"] == "Opposition": opp += 1.0
-            else: lb += 0.5; opp += 0.5
+            if is_aggregate:
+                score_str = str(p.get("score", ""))
+                # Extract the hole margin (e.g. '2' from '2 Up')
+                if "Up" in score_str:
+                    try: lb += float(score_str.split(" ")[0])
+                    except: pass
+                elif "Down" in score_str:
+                    try: opp += float(score_str.split(" ")[0])
+                    except: pass
+            else:
+                if p["leader"] == "L&B": lb += 1.0
+                elif p["leader"] == "Opposition": opp += 1.0
+                else: lb += 0.5; opp += 0.5
             
     # Format scores to remove .0 for whole numbers
     lb_display = int(lb) if lb.is_integer() else lb
@@ -498,7 +508,8 @@ if role == "public":
                 comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], 
                                        key=lambda x: x.get('display_order', 0))
                 
-                lb, opp = calculate_overall_score(comp_pairings)
+                is_aggregate = comp.get('aggregate_scoring', False)
+                lb, opp = calculate_overall_score(comp_pairings, is_aggregate)
                 status = get_comp_status(comp_pairings)
                 hide_names, reveal_time = should_hide_names(comp)
                 comp_updated_time = get_comp_updated_time(comp_pairings)
@@ -563,7 +574,8 @@ elif role == "manager":
         comp_pairings = sorted([p for p in pairings if p["competition_id"] == comp["id"]], 
                                key=lambda x: x.get('display_order', 0))
         
-        lb, opp = calculate_overall_score(comp_pairings)
+        is_aggregate = comp.get('aggregate_scoring', False)
+        lb, opp = calculate_overall_score(comp_pairings, is_aggregate)
         status = get_comp_status(comp_pairings)
         
         st.markdown(f"<p style='text-align: center; margin-bottom: 8px; font-size: 18px;'>Live Score: L&B <b>{lb}</b> - <b>{opp}</b> {comp['opposition_team']}</p>", unsafe_allow_html=True)
@@ -645,11 +657,12 @@ elif role == "admin":
                 with st.form("create_comp_form", clear_on_submit=True):
                     new_opp_team = st.text_input("Opposition Team")
                     new_round = st.selectbox("Round", ROUND_OPTIONS)
+                    new_aggregate_scoring = st.checkbox("Aggregate Scoring Format (Sum of Holes Up)", value=m_data.get('aggregate_scoring', False))
                     
                     new_date = st.date_input("Match Date", format="DD/MM/YYYY")
                     new_start_time = st.time_input("Start Time (Optional)", value=None)
 
-                    new_hide_mins = st.number_input("Hide Player Names Until (Mins before start)", min_value=0, value=60, step=15)
+                    new_hide_mins = st.number_input("Reveal Player Names (Minutes before start)", min_value=0, value=60, step=15)
                     new_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=False)
                     
                     st.write("---")
@@ -680,6 +693,7 @@ elif role == "admin":
                                 "start_time": time_string,
                                 "hide_mins": new_hide_mins,
                                 "always_hide_names": new_always_hide,
+                                "aggregate_scoring": new_aggregate_scoring,
                                 "auto_archive": new_auto_archive,
                                 "auto_archive_hours": new_archive_hours,
                                 "archived": False,
@@ -718,6 +732,7 @@ elif role == "admin":
                         
                         current_round = c_data.get('round')
                         e_round = st.selectbox("Round", ROUND_OPTIONS, index=safe_index(ROUND_OPTIONS, current_round if current_round else "Not Applicable"))
+                        e_aggregate_scoring = st.checkbox("Aggregate Scoring Format (Sum of Holes Up)", value=c_data.get('aggregate_scoring', False))
                         
                         try: parsed_date = datetime.strptime(c_data['match_date'], "%Y-%m-%d").date() if c_data.get('match_date') else datetime.now(ireland_tz).date()
                         except: parsed_date = datetime.now(ireland_tz).date()
@@ -728,7 +743,7 @@ elif role == "admin":
                         
                         hide_val = c_data.get('hide_mins')
                         hide_val = int(hide_val) if hide_val is not None else 60
-                        e_hide_mins = st.number_input("Hide Player Names Until (Mins before)", min_value=0, value=hide_val, step=15)
+                        e_hide_mins = st.number_input("Reveal Player Names (Minutes before start)", min_value=0, value=hide_val, step=15)
                         
                         st.write("")
                         e_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=c_data.get('always_hide_names', False))
@@ -753,7 +768,7 @@ elif role == "admin":
                                 supabase.table('competitions').update({
                                     "comp_name": e_name, "category": e_cat, "opposition_team": e_opp, 
                                     "round": updated_round_str, "match_date": str(e_date), "year": updated_year, "start_time": updated_time_str,
-                                    "hide_mins": e_hide_mins, "always_hide_names": e_always_hide, "auto_archive": e_auto_archive, "auto_archive_hours": e_archive_hours, "archived": e_archived
+                                    "hide_mins": e_hide_mins, "always_hide_names": e_always_hide, "aggregate_scoring": e_aggregate_scoring, "auto_archive": e_auto_archive, "auto_archive_hours": e_archive_hours, "archived": e_archived
                                 }).eq('id', c_data['id']).execute()
                                 
                                 fetch_all.clear()
@@ -926,12 +941,13 @@ elif role == "admin":
                 with st.form("add_master_form", clear_on_submit=True):
                     m_name = st.text_input("Competition Name (e.g., Barton Shield)")
                     m_cat = st.selectbox("Category", CATEGORY_OPTIONS)
+                    m_agg = st.checkbox("Aggregate Scoring Format (Sum of Holes Up)", value=False)
                     
                     st.write("")
                     if st.form_submit_button("Add to Master", use_container_width=True):
                         if m_name:
                             supabase.table("competitions_master").insert({
-                                "comp_name": m_name, "category": m_cat
+                                "comp_name": m_name, "category": m_cat, "aggregate_scoring": m_agg
                             }).execute()
                             fetch_all.clear()
                             st.success(f"Added {m_name} to Master List!"); time.sleep(1.5); st.rerun()
@@ -955,11 +971,12 @@ elif role == "admin":
                         with st.form("edit_master_form"):
                             e_name = st.text_input("Name", value=m_data['comp_name'])
                             e_cat = st.selectbox("Category", CATEGORY_OPTIONS, index=safe_index(CATEGORY_OPTIONS, m_data['category']))
+                            e_agg = st.checkbox("Aggregate Scoring Format (Sum of Holes Up)", value=m_data.get('aggregate_scoring', False))
                             
                             st.write("")
                             if st.form_submit_button("Update Master Template", use_container_width=True):
                                 supabase.table("competitions_master").update({
-                                    "comp_name": e_name, "category": e_cat
+                                    "comp_name": e_name, "category": e_cat, "aggregate_scoring": e_agg
                                 }).eq("id", m_data['id']).execute()
                                 fetch_all.clear()
                                 st.success("Updated Template!"); time.sleep(1.5); st.rerun()
