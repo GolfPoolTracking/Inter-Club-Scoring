@@ -85,8 +85,7 @@ components.html(
     width=0
 )
 
-
-# Inject Mobile-Optimized CSS, Meta Tags, and Noto Serif font safely
+# Inject Mobile-Optimized CSS, Meta Tags, and Inter font safely
 st.markdown("""
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -94,11 +93,11 @@ st.markdown("""
 <meta name="theme-color" content="#0D4722">
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
 
-/* Base Font */
-div, p, h1, h2, h3, h4, h5, h6, .stMarkdown, .stButton, .stRadio, .stCheckbox { 
-    font-family: 'Noto Serif', serif !important; 
+/* Blanket Font Application for 100% UI Consistency */
+html, body, [class*="css"], [class*="st-"], div, p, h1, h2, h3, h4, h5, h6, span, label, input, textarea, select, button, a { 
+    font-family: 'Inter', sans-serif !important; 
 }
 
 /* Hide Streamlit Chrome */
@@ -123,8 +122,8 @@ div[data-baseweb="select"] > div {
 /* Mobile Optimization: Fat-finger friendly buttons */
 .stButton > button {
     min-height: 55px !important;
-    font-size: 18px !important;
-    font-weight: bold !important;
+    font-size: 16px !important;
+    font-weight: 600 !important;
     border-radius: 8px !important;
 }
 
@@ -142,7 +141,7 @@ div[data-testid="stCheckbox"] div[role="checkbox"] {
 .streamlit-expanderHeader {
     min-height: 60px !important;
     font-size: 16px !important;
-    font-weight: 700 !important;
+    font-weight: 600 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -288,17 +287,20 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
     is_started = p['status'] in ["LIVE", "FINISHED"]
     tied_text = "A/S" if is_started else "ALL SQUARE"
 
+    # Score Wrapper ensures scores and hole details perfectly align at the bottom edge
+    score_wrapper_style = "height: 48px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;"
+
     if p['leader'] == 'L&B':
-        lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px; width: 100%; box-sizing: border-box;'>{p['score']}</div>"
+        lb_score_html = f"<div style='background-color: {LB_COLOR}; color: white; text-align: center; padding: 6px; font-weight: 600; border-radius: 5px; width: 100%; box-sizing: border-box;'>{p['score']}</div>"
     elif p['leader'] == 'Tied':
-        lb_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px; width: 100%; box-sizing: border-box;'>{tied_text}</div>"
+        lb_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 6px; font-weight: 600; border-radius: 5px; width: 100%; box-sizing: border-box;'>{tied_text}</div>"
     else:
         lb_score_html = f"<div style='padding: 6px; visibility: hidden; width: 100%;'>Spacer</div>"
         
     if p['leader'] == 'Opposition':
-        opp_score_html = f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px; width: 100%; box-sizing: border-box;'>{p['score'].replace('Down', 'Up')}</div>"
+        opp_score_html = f"<div style='background-color: {OPP_COLOR}; color: white; text-align: center; padding: 6px; font-weight: 600; border-radius: 5px; width: 100%; box-sizing: border-box;'>{p['score'].replace('Down', 'Up')}</div>"
     elif p['leader'] == 'Tied':
-        opp_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 6px; font-weight: bold; border-radius: 5px; width: 100%; box-sizing: border-box;'>{tied_text}</div>"
+        opp_score_html = f"<div style='background-color: {TIE_COLOR}; color: white; text-align: center; padding: 6px; font-weight: 600; border-radius: 5px; width: 100%; box-sizing: border-box;'>{tied_text}</div>"
     else:
         opp_score_html = f"<div style='padding: 6px; visibility: hidden; width: 100%;'>Spacer</div>"
         
@@ -310,7 +312,7 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
     
     # Conditionally display the hole and THRU text only if the match has started
     if p.get('status', '').strip().lower() != "not started":
-        hole_html = f"<div style='font-size: 10px; opacity: 0.6; font-weight: bold; text-transform: uppercase; line-height: 1; margin-bottom: 4px;'>Thru</div><div style='background-color: black; color: white; padding: 6px; font-size: 14px; font-weight: bold; border-radius: 4px; line-height: 1;'>{hole_val}</div>"
+        hole_html = f"<div style='font-size: 10px; opacity: 0.6; font-weight: 700; text-transform: uppercase; line-height: 1; margin-bottom: 4px;'>Thru</div><div style='background-color: black; color: white; padding: 6px; font-size: 14px; font-weight: 700; border-radius: 4px; line-height: 1;'>{hole_val}</div>"
     else:
         hole_html = f"<div style='padding: 6px; visibility: hidden;'>Spacer</div>"
 
@@ -332,15 +334,15 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
     bottom_row = f"""
     <div style='display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-top: 8px; margin-bottom: 15px;'>
         <div style='flex: 1; text-align: center; padding: 0 4px;'>
-            <div style='font-weight: bold; font-size: 15px; line-height: 1.2;'>{lb_name_display}</div>
+            <div style='font-weight: 600; font-size: 15px; line-height: 1.2;'>{lb_name_display}</div>
             {venue_html}
         </div>
         <div style='flex: 1; text-align: center; padding: 0 4px;'>
-            <div style='background-color: {p_status_color}; color: white; padding: 4px; font-size: 12px; font-weight: bold; border-radius: 4px;'>{p['status']}</div>
+            <div style='background-color: {p_status_color}; color: white; padding: 4px; font-size: 12px; font-weight: 700; border-radius: 4px;'>{p['status']}</div>
             {updated_html}
         </div>
         <div style='flex: 1; text-align: center; padding: 0 4px;'>
-            <div style='font-weight: bold; font-size: 15px; line-height: 1.2;'>{opp_name_display}</div>
+            <div style='font-weight: 600; font-size: 15px; line-height: 1.2;'>{opp_name_display}</div>
         </div>
     </div>
     """
@@ -424,8 +426,7 @@ if role == "public":
                     break
                     
             if any_live_matches:
-                # Safe Auto-Refresh Implementation
-                # Renders the visual box natively in Streamlit, then drives it via components.html script
+                # Safe Auto-Refresh Implementation via components.html
                 st.markdown("""
                 <div style="text-align: center; color: #8bc34a; font-size: 14px; font-weight: bold; margin-bottom: 25px; margin-top: 10px; background-color: rgba(139, 195, 74, 0.1); padding: 8px; border-radius: 8px;">
                     🔴 LIVE: Auto-refreshing in <span id="timer-span">120</span>s
@@ -490,7 +491,7 @@ if role == "public":
                     if not comp_pairings:
                         st.write("Pairings to be announced.")
                     for i, p in enumerate(comp_pairings, start=1):
-                        st.markdown(f"<div style='text-align:center; font-size:14px; font-weight: bold; opacity: 0.6; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='text-align:center; font-size:14px; font-weight: 700; opacity: 0.6; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
                         st.markdown(generate_pairing_html(p, "public", hide_names, reveal_time, show_venue=True, match_index=i), unsafe_allow_html=True)
                         if i < len(comp_pairings):
                             st.write("---")
@@ -537,7 +538,7 @@ elif role == "manager":
         if not comp_pairings: st.info("No matches added to this competition yet.")
             
         for i, p in enumerate(comp_pairings, start=1):
-            st.markdown(f"<div style='text-align:center; font-size:14px; font-weight:bold; opacity: 0.6; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:center; font-size:14px; font-weight:700; opacity: 0.6; margin-bottom: 8px;'>Match {i}</div>", unsafe_allow_html=True)
             st.markdown(generate_pairing_html(p, "manager", hide_names=False, match_index=i), unsafe_allow_html=True)
             
             with st.expander(f"UPDATE MATCH {i} ({p['landb_player']})", expanded=False):
