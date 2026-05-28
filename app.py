@@ -278,7 +278,6 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
         opp_score_html = f"<div style='padding: 6px; visibility: hidden;'>Spacer</div>"
         
     hole_val = str(p.get('hole', '1'))
-    hole_display = f"Hole {hole_val}" if hole_val.isdigit() else hole_val 
     p_status_color = "gray" if p['status'] == "Not Started" else ("darkred" if p['status'] == "FINISHED" else "#8bc34a")
     
     should_show = (view_mode == "manager") or show_venue
@@ -286,8 +285,8 @@ def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=N
     
     # Conditionally display the hole only if the match has started
     hole_html = ""
-    if p['status'] != "Not Started":
-        hole_html = f"<div style='background-color: black; color: white; padding: 4px; font-size: 14px; font-weight: bold; border-radius: 4px; margin-bottom: 6px;'>{hole_display}</div>"
+    if p.get('status', '').strip().lower() != "not started":
+        hole_html = f"<div style='font-size: 11px; color: gray; font-weight: bold; text-transform: uppercase; margin-bottom: 2px;'>Thru</div><div style='background-color: black; color: white; padding: 4px; font-size: 14px; font-weight: bold; border-radius: 4px; margin-bottom: 6px;'>{hole_val}</div>"
         
     return f"<div style='display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 15px;'><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{lb_score_html}<div style='font-weight: bold; font-size: 16px; margin-top: 8px; line-height: 1.3;'>{lb_name_display}</div>{venue_html}</div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%; margin-top: 2px;'>{hole_html}<div style='background-color: {p_status_color}; color: white; padding: 4px; font-size: 12px; font-weight: bold; border-radius: 4px;'>{p['status']}</div></div><div style='flex: 1; text-align: center; padding: 0 4px; width: 33%;'>{opp_score_html}<div style='font-weight: bold; font-size: 16px; margin-top: 8px; line-height: 1.3;'>{opp_name_display}</div></div></div>"
 
@@ -325,6 +324,19 @@ role = query_params.get("role", "public")
 
 # --- VIEW 1: PUBLIC SCOREBOARD ---
 if role == "public":
+    # Invisible 2-minute Auto-Refresh for Public View
+    components.html(
+        """
+        <script>
+        setTimeout(function() {
+            window.parent.location.reload();
+        }, 120000);
+        </script>
+        """,
+        height=0,
+        width=0
+    )
+
     logo_base64 = get_base64_image("app/static/lb_logo.png") or get_base64_image("static/lb_logo.png")
     logo_html = f'<img src="data:image/png;base64,{logo_base64}" width="120" style="margin-bottom: 10px; margin-top: 15px;"/>' if logo_base64 else ""
 
@@ -334,10 +346,6 @@ if role == "public":
     active_comps = [c for c in comps if not c.get('archived', False)]
     
     if active_comps:
-        if st.button("↻ Refresh Scores", use_container_width=True): 
-            fetch_all.clear()
-            st.rerun()
-        
         st.write("") # Mobile spacing
         
         c_yr, c_cat = st.columns([1, 2])
@@ -373,7 +381,9 @@ if role == "public":
             
             st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team']), unsafe_allow_html=True)
             
-            with st.expander(f"View Pairings (Updated: {datetime.now(ireland_tz).strftime('%H:%M')})"):
+            # Auto-expand the pairings if the match is LIVE so it doesn't collapse on refresh
+            is_live_comp = (status == "LIVE")
+            with st.expander(f"View Pairings (Updated: {datetime.now(ireland_tz).strftime('%H:%M')})", expanded=is_live_comp):
                 if not comp_pairings:
                     st.write("Pairings to be announced.")
                 for i, p in enumerate(comp_pairings, start=1):
@@ -382,6 +392,13 @@ if role == "public":
                     if i < len(comp_pairings):
                         st.write("---")
             st.divider()
+            
+        # Relocated Manual Refresh Button to the bottom
+        st.write("")
+        if st.button("↻ Refresh Scores Manually", use_container_width=True): 
+            fetch_all.clear()
+            st.rerun()
+
     else:
         st.info("No active competitions.")
 
@@ -743,7 +760,7 @@ elif role == "admin":
             m_action = st.radio("Action", ["Add to Master", "Edit/Delete Master"], horizontal=True)
             
             if m_action == "Add to Master":
-                with st.form("add_master_form"):
+                with st.form("add_master_form", clear_on_submit=True):
                     m_name = st.text_input("Competition Name (e.g., Barton Shield)")
                     m_cat = st.selectbox("Category", CATEGORY_OPTIONS)
                     
@@ -760,31 +777,41 @@ elif role == "admin":
 
             elif m_action == "Edit/Delete Master":
                 if masters:
-                    m_opts = {f"{m['category']} - {m['comp_name']}": m for m in masters}
-                    sel_m = st.selectbox("Select Master Template to Edit", list(m_opts.keys()))
-                    m_data = m_opts[sel_m]
+                    # Filter and sort the Master List for easier editing
+                    filter_cat_master = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_master")
+                    filtered_masters = [m for m in masters if filter_cat_master == "All" or m.get('category') == filter_cat_master]
                     
-                    with st.form("edit_master_form"):
-                        e_name = st.text_input("Name", value=m_data['comp_name'])
-                        e_cat = st.selectbox("Category", CATEGORY_OPTIONS, index=safe_index(CATEGORY_OPTIONS, m_data['category']))
+                    # Sort Alphabetically by Category, then by Competition Name
+                    filtered_masters = sorted(filtered_masters, key=lambda x: (x.get('category', ''), x.get('comp_name', '')))
+                    
+                    if filtered_masters:
+                        m_opts = {f"{m['category']} - {m['comp_name']}": m for m in filtered_masters}
+                        sel_m = st.selectbox("Select Master Template to Edit", list(m_opts.keys()))
+                        m_data = m_opts[sel_m]
                         
-                        st.write("")
-                        if st.form_submit_button("Update Master Template", use_container_width=True):
-                            supabase.table("competitions_master").update({
-                                "comp_name": e_name, "category": e_cat
-                            }).eq("id", m_data['id']).execute()
-                            fetch_all.clear()
-                            st.success("Updated Template!"); time.sleep(1.5); st.rerun()
-                    
-                    with st.popover(f"🚨 Delete {m_data['comp_name']} 🚨", use_container_width=True):
-                        st.warning(f"Confirm deletion of {m_data['comp_name']} from Master List?")
-                        del_master_placeholder = st.empty()
-                        if del_master_placeholder.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary", use_container_width=True):
-                            del_master_placeholder.empty()
-                            supabase.table("competitions_master").delete().eq("id", m_data['id']).execute()
-                            fetch_all.clear()
-                            st.success("Deleted from Master List.")
-                            time.sleep(1.5)
-                            st.rerun()
+                        with st.form("edit_master_form"):
+                            e_name = st.text_input("Name", value=m_data['comp_name'])
+                            e_cat = st.selectbox("Category", CATEGORY_OPTIONS, index=safe_index(CATEGORY_OPTIONS, m_data['category']))
+                            
+                            st.write("")
+                            if st.form_submit_button("Update Master Template", use_container_width=True):
+                                supabase.table("competitions_master").update({
+                                    "comp_name": e_name, "category": e_cat
+                                }).eq("id", m_data['id']).execute()
+                                fetch_all.clear()
+                                st.success("Updated Template!"); time.sleep(1.5); st.rerun()
+                        
+                        with st.popover(f"🚨 Delete {m_data['comp_name']} 🚨", use_container_width=True):
+                            st.warning(f"Confirm deletion of {m_data['comp_name']} from Master List?")
+                            del_master_placeholder = st.empty()
+                            if del_master_placeholder.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary", use_container_width=True):
+                                del_master_placeholder.empty()
+                                supabase.table("competitions_master").delete().eq("id", m_data['id']).execute()
+                                fetch_all.clear()
+                                st.success("Deleted from Master List.")
+                                time.sleep(1.5)
+                                st.rerun()
+                    else:
+                        st.info("No master competitions match this filter.")
                 else:
                     st.info("No master competitions found to edit.")
