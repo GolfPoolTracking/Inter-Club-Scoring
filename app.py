@@ -650,62 +650,69 @@ elif role == "admin":
         with tab1:
             st.subheader("Create New Competition")
             if masters:
-                # Sort Alphabetically by Category, then by Competition Name
-                sorted_masters = sorted(masters, key=lambda x: (x.get('category', ''), x.get('comp_name', '')))
-                master_opts = {f"{m['category']} - {m['comp_name']}": m for m in sorted_masters}
-                selected_master = st.selectbox("Select from Master List", list(master_opts.keys()))
-                m_data = master_opts[selected_master]
+                filter_cat_create = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_create_comp")
+                filtered_masters_create = [m for m in masters if filter_cat_create == "All" or m.get('category') == filter_cat_create]
                 
-                with st.form("create_comp_form", clear_on_submit=True):
-                    new_opp_team = st.text_input("Opposition Team")
-                    new_round = st.selectbox("Round", ROUND_OPTIONS)
-                    new_aggregate_scoring = st.checkbox("Aggregate Scoring Format (Sum of Holes Up)", value=m_data.get('aggregate_scoring', False))
+                # Sort Alphabetically by Category, then by Competition Name
+                sorted_masters = sorted(filtered_masters_create, key=lambda x: (x.get('category', ''), x.get('comp_name', '')))
+                
+                if sorted_masters:
+                    master_opts = {f"{m['category']} - {m['comp_name']}": m for m in sorted_masters}
+                    selected_master = st.selectbox("Select from Master List", list(master_opts.keys()))
+                    m_data = master_opts[selected_master]
                     
-                    new_date = st.date_input("Match Date", format="DD/MM/YYYY")
-                    new_start_time = st.time_input("Start Time (Optional)", value=None)
+                    with st.form("create_comp_form", clear_on_submit=True):
+                        new_opp_team = st.text_input("Opposition Team")
+                        new_round = st.selectbox("Round", ROUND_OPTIONS)
+                        new_aggregate_scoring = st.checkbox("Aggregate Scoring Format (Sum of Holes Up)", value=m_data.get('aggregate_scoring', False))
+                        
+                        new_date = st.date_input("Match Date", format="DD/MM/YYYY")
+                        new_start_time = st.time_input("Start Time (Optional)", value=None)
 
-                    new_hide_mins = st.number_input("Reveal Player Names (Minutes before start)", min_value=0, value=60, step=15)
-                    new_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=False)
-                    
-                    st.write("---")
-                    st.markdown("##### 🗄️ Archive Settings")
-                    c_arc1, c_arc2 = st.columns(2)
-                    with c_arc1:
-                        new_auto_archive = st.checkbox("Auto-Archive after match", value=True)
-                    with c_arc2:
-                        new_archive_hours = st.selectbox("Auto-Archive Timer", options=ARCHIVE_HOURS_OPTIONS, format_func=lambda x: f"{x//24} Day{'s' if x>24 else ''} ({x} hrs)")
-                    st.write("---")
-                    
-                    st.write("")
-                    if st.form_submit_button("Create Competition", use_container_width=True):
-                        if new_opp_team:
-                            secure_access_code = generate_random_code()
-                            time_string = new_start_time.strftime("%H:%M") if new_start_time else None
-                            round_val = new_round if new_round != "Not Applicable" else None
-                            
-                            match_year = new_date.year
+                        new_hide_mins = st.number_input("Reveal Player Names (Minutes before start)", min_value=0, value=60, step=15)
+                        new_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=False)
+                        
+                        st.write("---")
+                        st.markdown("##### 🗄️ Archive Settings")
+                        c_arc1, c_arc2 = st.columns(2)
+                        with c_arc1:
+                            new_auto_archive = st.checkbox("Auto-Archive after match", value=True)
+                        with c_arc2:
+                            new_archive_hours = st.selectbox("Auto-Archive Timer", options=ARCHIVE_HOURS_OPTIONS, format_func=lambda x: f"{x//24} Day{'s' if x>24 else ''} ({x} hrs)")
+                        st.write("---")
+                        
+                        st.write("")
+                        if st.form_submit_button("Create Competition", use_container_width=True):
+                            if new_opp_team:
+                                secure_access_code = generate_random_code()
+                                time_string = new_start_time.strftime("%H:%M") if new_start_time else None
+                                round_val = new_round if new_round != "Not Applicable" else None
+                                
+                                match_year = new_date.year
 
-                            supabase.table('competitions').insert({
-                                "comp_name": m_data['comp_name'], 
-                                "category": m_data['category'],
-                                "opposition_team": new_opp_team, 
-                                "round": round_val,
-                                "match_date": str(new_date),
-                                "year": match_year,
-                                "start_time": time_string,
-                                "hide_mins": new_hide_mins,
-                                "always_hide_names": new_always_hide,
-                                "aggregate_scoring": new_aggregate_scoring,
-                                "auto_archive": new_auto_archive,
-                                "auto_archive_hours": new_archive_hours,
-                                "archived": False,
-                                "access_code": secure_access_code  
-                            }).execute()
-                            
-                            fetch_all.clear() 
-                            st.success(f"Created {m_data['category']} {m_data['comp_name']}!"); time.sleep(3); st.rerun()
-                        else:
-                            st.error("Please fill out the Opposition Team.")
+                                supabase.table('competitions').insert({
+                                    "comp_name": m_data['comp_name'], 
+                                    "category": m_data['category'],
+                                    "opposition_team": new_opp_team, 
+                                    "round": round_val,
+                                    "match_date": str(new_date),
+                                    "year": match_year,
+                                    "start_time": time_string,
+                                    "hide_mins": new_hide_mins,
+                                    "always_hide_names": new_always_hide,
+                                    "aggregate_scoring": new_aggregate_scoring,
+                                    "auto_archive": new_auto_archive,
+                                    "auto_archive_hours": new_archive_hours,
+                                    "archived": False,
+                                    "access_code": secure_access_code  
+                                }).execute()
+                                
+                                fetch_all.clear() 
+                                st.success(f"Created {m_data['category']} {m_data['comp_name']}!"); time.sleep(3); st.rerun()
+                            else:
+                                st.error("Please fill out the Opposition Team.")
+                else:
+                    st.info("No master competitions match this filter.")
             else:
                 st.info("No master competitions found. Please add them in the 'Master List' tab first.")
                                   
@@ -911,14 +918,8 @@ elif role == "admin":
                     
         # TAB 5: ACCESS LINKS
         with tab5:
-            st.subheader("System Access Links")
+            st.subheader("Manager Access Links")
             st.write("Save these links or send them to your team managers.")
-            
-            st.markdown("**Admin Console Link** (Password Required):")
-            st.code(f"{APP_BASE_URL}/?role=admin", language="text")
-            
-            st.divider()
-            st.markdown("**Manager Portal Links**:")
             
             filter_cat_links = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_links")
             show_archived = st.checkbox("Show Archived Competitions")
