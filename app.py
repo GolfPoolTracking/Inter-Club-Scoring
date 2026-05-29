@@ -327,8 +327,23 @@ def generate_comp_id(comp):
     return base.replace(" ", "_")
 
 # --- HTML GENERATORS ---
-def generate_scoreboard_html(lb_score, opp_score, opp_team_name):
-    return f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto;'><div style='flex: 2; text-align: center; padding: 0 5px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 15px;'>L&B</div><div style='background-color: {LB_COLOR}; color: white; padding: 15px 5px; border-radius: 8px; font-weight: bold; font-size: 28px;'>{lb_score}</div></div><div style='flex: 1; text-align: center; font-size: 35px; font-weight: bold; padding-top: 25px;'>:</div><div style='flex: 2; text-align: center; padding: 0 5px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 15px;'>{opp_team_name}</div><div style='background-color: {OPP_COLOR}; color: white; padding: 15px 5px; border-radius: 8px; font-weight: bold; font-size: 28px;'>{opp_score}</div></div></div>"
+def generate_scoreboard_html(lb_score, opp_score, opp_team_name, is_aggregate=False):
+    if is_aggregate:
+        if lb_score > 0:
+            h_str = "Hole" if lb_score == 1 else "Holes"
+            text = f"L&B {lb_score} {h_str} Up"
+            bg_color = LB_COLOR
+        elif opp_score > 0:
+            h_str = "Hole" if opp_score == 1 else "Holes"
+            text = f"{opp_team_name} {opp_score} {h_str} Up"
+            bg_color = OPP_COLOR
+        else:
+            text = "ALL SQUARE"
+            bg_color = TIE_COLOR
+
+        return f"<div style='display: flex; justify-content: center; align-items: center; width: 100%; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto;'><div style='width: 100%; text-align: center; padding: 0 5px;'><div style='background-color: {bg_color}; color: white; padding: 15px 5px; border-radius: 8px; font-weight: bold; font-size: 28px;'>{text}</div></div></div>"
+    else:
+        return f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto;'><div style='flex: 2; text-align: center; padding: 0 5px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 15px;'>L&B</div><div style='background-color: {LB_COLOR}; color: white; padding: 15px 5px; border-radius: 8px; font-weight: bold; font-size: 28px;'>{lb_score}</div></div><div style='flex: 1; text-align: center; font-size: 35px; font-weight: bold; padding-top: 25px;'>:</div><div style='flex: 2; text-align: center; padding: 0 5px;'><div style='font-weight: bold; margin-bottom: 5px; font-size: 15px;'>{opp_team_name}</div><div style='background-color: {OPP_COLOR}; color: white; padding: 15px 5px; border-radius: 8px; font-weight: bold; font-size: 28px;'>{opp_score}</div></div></div>"
 
 def generate_pairing_html(p, view_mode="public", hide_names=False, reveal_time=None, show_venue=False, match_index=1):
     # Only hide L&B player if the hide_names flag is true
@@ -552,7 +567,7 @@ if role == "public":
                 
                 st.markdown(f"<div style='text-align: center; margin-bottom: 15px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 6px 16px; border-radius: 6px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
                 
-                st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team']), unsafe_allow_html=True)
+                st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team'], is_aggregate), unsafe_allow_html=True)
                 
                 # Auto-expand the pairings if the match is LIVE so it doesn't collapse on refresh
                 is_live_comp = (status == "LIVE")
@@ -601,7 +616,19 @@ elif role == "manager":
         lb, opp = calculate_overall_score(comp_pairings, is_aggregate)
         status = get_comp_status(comp_pairings)
         
-        st.markdown(f"<p style='text-align: center; margin-bottom: 8px; font-size: 18px;'>Live Score: L&B <b>{lb}</b> - <b>{opp}</b> {comp['opposition_team']}</p>", unsafe_allow_html=True)
+        if is_aggregate:
+            if lb > 0:
+                h_str = "Hole" if lb == 1 else "Holes"
+                score_text = f"L&B {lb} {h_str} Up"
+            elif opp > 0:
+                h_str = "Hole" if opp == 1 else "Holes"
+                score_text = f"{comp['opposition_team']} {opp} {h_str} Up"
+            else:
+                score_text = "ALL SQUARE"
+            st.markdown(f"<p style='text-align: center; margin-bottom: 8px; font-size: 18px;'>Live Score: <b>{score_text}</b></p>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<p style='text-align: center; margin-bottom: 8px; font-size: 18px;'>Live Score: L&B <b>{lb}</b> - <b>{opp}</b> {comp['opposition_team']}</p>", unsafe_allow_html=True)
+
         st.markdown(f"<div style='text-align: center; margin-bottom: 25px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 6px 16px; border-radius: 6px; font-weight: bold; font-size: 14px;'>{status}</span></div>", unsafe_allow_html=True)
         st.divider()
         
