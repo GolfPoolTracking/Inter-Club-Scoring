@@ -864,11 +864,17 @@ elif role == "admin":
                         del_comp_placeholder = st.empty()
                         if del_comp_placeholder.button("Yes, Delete", key=f"btn_del_comp_{c_data['id']}", type="primary", use_container_width=True):
                             del_comp_placeholder.empty()
-                            supabase.table('competitions').delete().eq('id', c_data['id']).execute()
-                            fetch_all.clear()
-                            st.success("Deleted.")
-                            time.sleep(1.5)
-                            st.rerun()
+                            try:
+                                # Cascade delete: remove matches/pairings first
+                                supabase.table('pairings').delete().eq('competition_id', c_data['id']).execute()
+                                # Then delete competition
+                                supabase.table('competitions').delete().eq('id', c_data['id']).execute()
+                                fetch_all.clear()
+                                st.success("Deleted.")
+                                time.sleep(1.5)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error deleting competition: {e}")
                 else:
                     st.info(f"No matchable {filter_cat} competitions found for {admin_year}.")
                     
@@ -1099,11 +1105,14 @@ elif role == "admin":
                             del_master_placeholder = st.empty()
                             if del_master_placeholder.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary", use_container_width=True):
                                 del_master_placeholder.empty()
-                                supabase.table("competitions_master").delete().eq("id", m_data['id']).execute()
-                                fetch_all.clear()
-                                st.success("Deleted from Master List.")
-                                time.sleep(1.5)
-                                st.rerun()
+                                try:
+                                    supabase.table("competitions_master").delete().eq("id", m_data['id']).execute()
+                                    fetch_all.clear()
+                                    st.success("Deleted from Master List.")
+                                    time.sleep(1.5)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error deleting master template: {e}")
                     else:
                         st.info("No master competitions match this filter.")
                 else:
