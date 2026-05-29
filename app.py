@@ -189,18 +189,30 @@ def get_comp_status(pairings):
 
 def calculate_overall_score(pairings, is_aggregate=False):
     lb, opp = 0.0, 0.0
-    for p in pairings:
-        if p["status"] in ["LIVE", "FINISHED"]:
-            if is_aggregate:
+    if is_aggregate:
+        net_lb = 0.0
+        for p in pairings:
+            if p["status"] in ["LIVE", "FINISHED"]:
                 score_str = str(p.get("score", ""))
                 # Extract the hole margin (e.g. '2' from '2 Up')
                 if "Up" in score_str:
-                    try: lb += float(score_str.split(" ")[0])
+                    try: net_lb += float(score_str.split(" ")[0])
                     except: pass
                 elif "Down" in score_str:
-                    try: opp += float(score_str.split(" ")[0])
+                    try: net_lb -= float(score_str.split(" ")[0])
                     except: pass
-            else:
+        if net_lb > 0:
+            lb = net_lb
+            opp = 0.0
+        elif net_lb < 0:
+            lb = 0.0
+            opp = abs(net_lb)
+        else:
+            lb = 0.0
+            opp = 0.0
+    else:
+        for p in pairings:
+            if p["status"] in ["LIVE", "FINISHED"]:
                 if p["leader"] == "L&B": lb += 1.0
                 elif p["leader"] == "Opposition": opp += 1.0
                 else: lb += 0.5; opp += 0.5
@@ -293,7 +305,7 @@ def is_comp_active(comp):
                 
                 archive_hours = comp.get('auto_archive_hours')
                 if archive_hours is None:
-                    archive_hours = 24
+                    archive_hours = 48
                 
                 archive_time = dt_aware + timedelta(hours=int(archive_hours))
                 
@@ -403,6 +415,7 @@ VENUE_OPTIONS = ["Home", "Away"]
 CATEGORY_OPTIONS = ["Mens", "Womens", "Boys", "Girls", "Mixed"]
 ROUND_OPTIONS = ["Round 1", "Round 2", "Round 3", "Round 4", "Quarter-Final", "Semi-Final", "Final"]
 ARCHIVE_HOURS_OPTIONS = [24, 48, 72, 96, 120, 144, 168]
+TIME_OPTIONS = [f"{h:02d}:{m:02d}" for h in range(9, 20) for m in (0, 15, 30, 45) if not (h == 19 and m > 0)]
 
 # --- DATA FETCHING ---
 @st.cache_data(ttl=10)
@@ -462,6 +475,12 @@ if role == "public":
             c for c in active_comps 
             if c.get('year') == current_year and (filter_cat == "All" or c['category'] == filter_cat)
         ]
+        
+        # Sort chronologically by date and time
+        filtered_comps = sorted(
+            filtered_comps, 
+            key=lambda x: (x.get('match_date') or '9999-12-31', x.get('start_time') or '23:59')
+        )
                 
         if not filtered_comps:
             st.info("No active competitions match your filters.")
@@ -671,7 +690,7 @@ elif role == "admin":
                         new_aggregate_scoring = st.checkbox("Aggregate Scoring Format (Sum of Holes Up)", value=m_data.get('aggregate_scoring', False))
                         
                         new_date = st.date_input("Match Date", format="DD/MM/YYYY")
-                        new_start_time = st.time_input("Start Time (Optional)", value=None)
+                        new_start_time = st.selectbox("Start Time (Optional)", [""] + TIME_OPTIONS, index=0)
 
                         new_hide_mins = st.number_input("Reveal Player Names (Minutes before start)", min_value=0, value=60, step=15)
                         new_always_hide = st.checkbox("Always Hide Player Names (e.g. U18s)", value=False)
@@ -682,14 +701,14 @@ elif role == "admin":
                         with c_arc1:
                             new_auto_archive = st.checkbox("Auto-Archive after match", value=True)
                         with c_arc2:
-                            new_archive_hours = st.selectbox("Auto-Archive Timer", options=ARCHIVE_HOURS_OPTIONS, format_func=lambda x: f"{x//24} Day{'s' if x>24 else ''} ({x} hrs)")
+                            new_archive_hours = st.selectbox("Auto-Archive Timer", options=ARCHIVE_HOURS_OPTIONS, index=1, format_func=lambda x: f"{x//24} Day{'s' if x>24 else ''} ({x} hrs)")
                         st.write("---")
                         
                         st.write("")
                         if st.form_submit_button("Create Competition", use_container_width=True):
                             if new_opp_team:
                                 secure_access_code = generate_random_code()
-                                time_string = new_start_time.strftime("%H:%M") if new_start_time else None
+                                time_string = new_start_time if new_start_time != "" else None
                                 round_val = new_round if new_round != "Not Applicable" else None
                                 
                                 match_year = new_date.year
@@ -725,12 +744,24 @@ elif role == "admin":
             st.subheader("Edit/Delete Competition")
             if comps:
                 filter_cat = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_edit_comp")
+                exclude_inactive_t2 = st.checkbox("Exclude Archived/Finished Competitions", value=True, key="exc_in_t2")
                 
                 # Filter by Year and Category
                 filtered_comps = [
                     c for c in comps 
                     if c.get('year') == admin_year and (filter_cat == "All" or c['category'] == filter_cat)
                 ]
+                
+                if exclude_inactive_t2:
+                    active_only = []
+                    for c in filtered_comps:
+                        if not is_comp_active(c):
+                            continue
+                        c_pairings = [p for p in pairings if p["competition_id"] == c['id']]
+                        if c_pairings and all(p['status'] == "FINISHED" for p in c_pairings):
+                            continue
+                        active_only.append(c)
+                    filtered_comps = active_only
                 
                 # Sort Alphabetically by Category, then by Competition Name
                 filtered_comps = sorted(filtered_comps, key=lambda x: (x.get('category', ''), x.get('comp_name', '')))
@@ -754,8 +785,17 @@ elif role == "admin":
                         except: parsed_date = datetime.now(ireland_tz).date()
                             
                         e_date = st.date_input("Match Date", value=parsed_date, format="DD/MM/YYYY")
-                        parsed_time = safe_time_parse(c_data.get('start_time', ''))
-                        e_time = st.time_input("Start Time", value=parsed_time)
+                        
+                        current_time = c_data.get('start_time', '')
+                        if current_time and len(current_time) >= 5:
+                            current_time_short = current_time[:5]
+                            if current_time_short in TIME_OPTIONS:
+                                time_idx = TIME_OPTIONS.index(current_time_short) + 1
+                            else:
+                                time_idx = 0
+                        else:
+                            time_idx = 0
+                        e_time = st.selectbox("Start Time", [""] + TIME_OPTIONS, index=time_idx)
                         
                         hide_val = c_data.get('hide_mins')
                         hide_val = int(hide_val) if hide_val is not None else 60
@@ -771,11 +811,11 @@ elif role == "admin":
                             e_auto_archive = st.checkbox("Auto-Archive after match", value=c_data.get('auto_archive', True))
                             e_archived = st.checkbox("Manually Archive (Hide)", value=c_data.get('archived', False))
                         with e_col_aa2:
-                            e_archive_hours = st.selectbox("Auto-Archive Timer", options=ARCHIVE_HOURS_OPTIONS, index=safe_index(ARCHIVE_HOURS_OPTIONS, c_data.get('auto_archive_hours', 24)), format_func=lambda x: f"{x//24} Day{'s' if x>24 else ''} ({x} hrs)")
+                            e_archive_hours = st.selectbox("Auto-Archive Timer", options=ARCHIVE_HOURS_OPTIONS, index=safe_index(ARCHIVE_HOURS_OPTIONS, c_data.get('auto_archive_hours', 48)), format_func=lambda x: f"{x//24} Day{'s' if x>24 else ''} ({x} hrs)")
                         st.write("---")
                         
                         if st.form_submit_button("Update Competition", use_container_width=True):
-                            updated_time_str = e_time.strftime("%H:%M") if e_time else None
+                            updated_time_str = e_time if e_time != "" else None
                             updated_round_str = e_round if e_round != "Not Applicable" else None
                             
                             updated_year = e_date.year
@@ -803,19 +843,31 @@ elif role == "admin":
                             time.sleep(1.5)
                             st.rerun()
                 else:
-                    st.info(f"No {filter_cat} competitions found for {admin_year}.")
+                    st.info(f"No matchable {filter_cat} competitions found for {admin_year}.")
                     
         # TAB 3: ADD MATCH
         with tab3:
             st.subheader("Add Match to Competition")
             if comps:
                 filter_cat_add = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_add_match")
+                exclude_inactive_t3 = st.checkbox("Exclude Archived/Finished Competitions", value=True, key="exc_in_t3")
                 
                 # Filter by Year and Category
                 filtered_comps_add = [
                     c for c in comps 
                     if c.get('year') == admin_year and (filter_cat_add == "All" or c['category'] == filter_cat_add)
                 ]
+                
+                if exclude_inactive_t3:
+                    active_only_add = []
+                    for c in filtered_comps_add:
+                        if not is_comp_active(c):
+                            continue
+                        c_pairings = [p for p in pairings if p["competition_id"] == c['id']]
+                        if c_pairings and all(p['status'] == "FINISHED" for p in c_pairings):
+                            continue
+                        active_only_add.append(c)
+                    filtered_comps_add = active_only_add
                 
                 # Sort Alphabetically by Category, then by Competition Name
                 filtered_comps_add = sorted(filtered_comps_add, key=lambda x: (x.get('category', ''), x.get('comp_name', '')))
@@ -855,19 +907,31 @@ elif role == "admin":
                             else:
                                 st.error("Please enter both player names.") 
                 else:
-                    st.info(f"No {filter_cat_add} competitions found for {admin_year}.")
+                    st.info(f"No matchable {filter_cat_add} competitions found for {admin_year}.")
 
         # TAB 4: EDIT MATCH
         with tab4:
             st.subheader("Edit/Delete Match")
             if comps:
                 filter_cat_m = st.radio("Filter Category", ["All"] + CATEGORY_OPTIONS, horizontal=True, key="filter_edit_match")
+                exclude_inactive_t4 = st.checkbox("Exclude Archived/Finished Competitions", value=True, key="exc_in_t4")
                 
                 # Filter by Year and Category
                 filtered_comps_m = [
                     c for c in comps 
                     if c.get('year') == admin_year and (filter_cat_m == "All" or c['category'] == filter_cat_m)
                 ]
+                
+                if exclude_inactive_t4:
+                    active_only_m = []
+                    for c in filtered_comps_m:
+                        if not is_comp_active(c):
+                            continue
+                        c_pairings = [p for p in pairings if p["competition_id"] == c['id']]
+                        if c_pairings and all(p['status'] == "FINISHED" for p in c_pairings):
+                            continue
+                        active_only_m.append(c)
+                    filtered_comps_m = active_only_m
                 
                 # Sort Alphabetically by Category, then by Competition Name
                 filtered_comps_m = sorted(filtered_comps_m, key=lambda x: (x.get('category', ''), x.get('comp_name', '')))
@@ -918,7 +982,7 @@ elif role == "admin":
                     else:
                         st.info("No matches in this competition.")
                 else:
-                    st.info(f"No {filter_cat_m} competitions found for {admin_year}.")
+                    st.info(f"No matchable {filter_cat_m} competitions found for {admin_year}.")
                     
         # TAB 5: ACCESS LINKS
         with tab5:
@@ -936,8 +1000,11 @@ elif role == "admin":
                 and (show_archived or is_comp_active(c))
             ]
             
-            # Sort Alphabetically by Category, then by Competition Name
-            filtered_comps_links = sorted(filtered_comps_links, key=lambda x: (x.get('category', ''), x.get('comp_name', '')))
+            # Sort chronologically by date and time
+            filtered_comps_links = sorted(
+                filtered_comps_links, 
+                key=lambda x: (x.get('match_date') or '9999-12-31', x.get('start_time') or '23:59')
+            )
             
             if filtered_comps_links:
                 for c in filtered_comps_links:
