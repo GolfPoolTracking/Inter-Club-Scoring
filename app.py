@@ -472,19 +472,30 @@ if role == "public":
     if active_comps:
         st.write("") # Mobile spacing
         
-        # 1. State Persistence via URL query parameters
-        q_cat = st.query_params.get("cat", "All")
+        # 1. State Persistence via URL query parameters (Race-Condition Safe)
         cat_opts = ["All"] + CATEGORY_OPTIONS
-        try:
-            cat_idx = cat_opts.index(q_cat)
-        except ValueError:
-            cat_idx = 0
+        
+        # Initialize the session state from the URL on the very first load
+        if "cat_filter" not in st.session_state:
+            initial_cat = st.query_params.get("cat", "All")
+            st.session_state.cat_filter = initial_cat if initial_cat in cat_opts else "All"
+
+        # Callback to update the URL silently in the background
+        def update_url():
+            st.query_params["cat"] = st.session_state.cat_filter
 
         # Note: Year removed from public view per request. Using current year as default constraint.
         current_year = datetime.now(ireland_tz).year
-        filter_cat = st.radio("Category", cat_opts, index=cat_idx, horizontal=True, label_visibility="collapsed")
-        if filter_cat != q_cat:
-            st.query_params["cat"] = filter_cat
+        
+        # Bind the radio button directly to session_state using the key
+        filter_cat = st.radio(
+            "Category", 
+            cat_opts, 
+            key="cat_filter", 
+            horizontal=True, 
+            label_visibility="collapsed",
+            on_change=update_url
+        )
             
         filtered_comps = [
             c for c in active_comps 
