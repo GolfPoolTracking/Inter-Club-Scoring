@@ -578,7 +578,9 @@ if role == "public":
                 
                 st.markdown(f"<div style='text-align: center; margin-bottom: 15px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 6px 16px; border-radius: 6px; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
                 
-                st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team'], is_aggregate), unsafe_allow_html=True)
+                # Check status before generating overall score block
+                if status != "Not Started":
+                    st.markdown(generate_scoreboard_html(lb, opp, comp['opposition_team'], is_aggregate), unsafe_allow_html=True)
                 
                 # Auto-expand the pairings if the match is LIVE so it doesn't collapse on refresh
                 is_live_comp = (status == "LIVE")
@@ -627,18 +629,19 @@ elif role == "manager":
         lb, opp = calculate_overall_score(comp_pairings, is_aggregate)
         status = get_comp_status(comp_pairings)
         
-        if is_aggregate:
-            if lb > 0:
-                h_str = "Hole" if lb == 1 else "Holes"
-                score_text = f"L&B {lb} {h_str} Up"
-            elif opp > 0:
-                h_str = "Hole" if opp == 1 else "Holes"
-                score_text = f"{comp['opposition_team']} {opp} {h_str} Up"
+        if status != "Not Started":
+            if is_aggregate:
+                if lb > 0:
+                    h_str = "Hole" if lb == 1 else "Holes"
+                    score_text = f"L&B {lb} {h_str} Up"
+                elif opp > 0:
+                    h_str = "Hole" if opp == 1 else "Holes"
+                    score_text = f"{comp['opposition_team']} {opp} {h_str} Up"
+                else:
+                    score_text = "ALL SQUARE"
+                st.markdown(f"<p style='text-align: center; margin-bottom: 8px; font-size: 18px;'>Live Score: <b>{score_text}</b></p>", unsafe_allow_html=True)
             else:
-                score_text = "ALL SQUARE"
-            st.markdown(f"<p style='text-align: center; margin-bottom: 8px; font-size: 18px;'>Live Score: <b>{score_text}</b></p>", unsafe_allow_html=True)
-        else:
-            st.markdown(f"<p style='text-align: center; margin-bottom: 8px; font-size: 18px;'>Live Score: L&B <b>{lb}</b> - <b>{opp}</b> {comp['opposition_team']}</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='text-align: center; margin-bottom: 8px; font-size: 18px;'>Live Score: L&B <b>{lb}</b> - <b>{opp}</b> {comp['opposition_team']}</p>", unsafe_allow_html=True)
 
         st.markdown(f"<div style='text-align: center; margin-bottom: 25px;'><span style='background-color: {'#8bc34a' if status=='LIVE' else 'gray'}; color: white; padding: 6px 16px; border-radius: 6px; font-weight: bold; font-size: 14px;'>{status}</span></div>", unsafe_allow_html=True)
         st.divider()
