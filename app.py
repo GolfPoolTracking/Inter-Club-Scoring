@@ -10,6 +10,11 @@ import random
 import string
 import streamlit.components.v1 as components
 
+# 🚨 UPTIMEROBOT INTERCEPTOR (Protects API Quotas) 🚨
+if st.query_params.get("view") == "ping":
+    st.write("Server is awake and ready! 🟢")
+    st.stop()
+
 # --- Random code generator for unique keys ---
 def generate_random_code(length=6):
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
