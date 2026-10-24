@@ -441,10 +441,10 @@ TIME_OPTIONS = [f"{h:02d}:{m:02d}" for h in range(9, 20) for m in (0, 15, 30, 45
 @st.cache_data(ttl=10)
 def fetch_all():
     try:
-        comps = supabase.table("competitions").select("*").execute().data
+        comps = supabase.table("interclub_competitions").select("*").execute().data
         pairings = supabase.table("pairings").select("*").execute().data
         try:
-            masters = supabase.table("competitions_master").select("*").execute().data
+            masters = supabase.table("interclub_competitions_master").select("*").execute().data
         except Exception:
             masters = []
         return comps, pairings, masters
@@ -885,7 +885,7 @@ elif role == "admin":
                             del_comp_placeholder.empty()
                             try:
                                 # Cascade delete: remove matches/pairings first
-                                supabase.table('pairings').delete().eq('competition_id', c_data['id']).execute()
+                                supabase.table('interclub_pairings').delete().eq('competition_id', c_data['id']).execute()
                                 # Then delete competition
                                 supabase.table('competitions').delete().eq('id', c_data['id']).execute()
                                 fetch_all.clear()
@@ -944,7 +944,7 @@ elif role == "admin":
                                 next_order = (max([p.get('display_order', 0) for p in existing], default=0)) + 1
                                 
                                 now_str = datetime.now(ZoneInfo("UTC")).isoformat()
-                                supabase.table('pairings').insert({
+                                supabase.table('interclub_pairings').insert({
                                     "competition_id": target_comp_id,
                                     "landb_player": lb_player_input, 
                                     "opposition_player": opp_player_input,
@@ -1010,7 +1010,7 @@ elif role == "admin":
                             st.write("")
                             if st.form_submit_button("Update Match", use_container_width=True):
                                 now_str = datetime.now(ZoneInfo("UTC")).isoformat()
-                                supabase.table('pairings').update({
+                                supabase.table('interclub_pairings').update({
                                     "landb_player": e_lb, 
                                     "opposition_player": e_opp, 
                                     "venue": e_venue,
@@ -1026,7 +1026,7 @@ elif role == "admin":
                             del_match_placeholder = st.empty()
                             if del_match_placeholder.button("Yes, Delete", key=f"btn_del_match_{p_data['id']}", type="primary", use_container_width=True):
                                 del_match_placeholder.empty()
-                                supabase.table('pairings').delete().eq('id', p_data['id']).execute()
+                                supabase.table('interclub_pairings').delete().eq('id', p_data['id']).execute()
                                 fetch_all.clear()
                                 st.success("Deleted.")
                                 time.sleep(1.5)
@@ -1084,7 +1084,7 @@ elif role == "admin":
                     st.write("")
                     if st.form_submit_button("Add to Master", use_container_width=True):
                         if m_name:
-                            supabase.table("competitions_master").insert({
+                            supabase.table("interclub_competitions_master").insert({
                                 "comp_name": m_name, "category": m_cat, "aggregate_scoring": m_agg
                             }).execute()
                             fetch_all.clear()
@@ -1113,7 +1113,7 @@ elif role == "admin":
                             
                             st.write("")
                             if st.form_submit_button("Update Master Template", use_container_width=True):
-                                supabase.table("competitions_master").update({
+                                supabase.table("interclub_competitions_master").update({
                                     "comp_name": e_name, "category": e_cat, "aggregate_scoring": e_agg
                                 }).eq("id", m_data['id']).execute()
                                 fetch_all.clear()
@@ -1125,7 +1125,7 @@ elif role == "admin":
                             if del_master_placeholder.button("Yes, Delete", key=f"btn_del_master_{m_data['id']}", type="primary", use_container_width=True):
                                 del_master_placeholder.empty()
                                 try:
-                                    supabase.table("competitions_master").delete().eq("id", m_data['id']).execute()
+                                    supabase.table("interclub_competitions_master").delete().eq("id", m_data['id']).execute()
                                     fetch_all.clear()
                                     st.success("Deleted from Master List.")
                                     time.sleep(1.5)
