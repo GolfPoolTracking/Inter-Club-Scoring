@@ -442,7 +442,7 @@ TIME_OPTIONS = [f"{h:02d}:{m:02d}" for h in range(9, 20) for m in (0, 15, 30, 45
 def fetch_all():
     try:
         comps = supabase.table("interclub_competitions").select("*").execute().data
-        pairings = supabase.table("pairings").select("*").execute().data
+        pairings = supabase.table("interclub_pairings").select("*").execute().data
         try:
             masters = supabase.table("interclub_competitions_master").select("*").execute().data
         except Exception:
@@ -672,7 +672,7 @@ elif role == "manager":
                     # Ensure timestamp saves strictly as UTC timezone aware so it corrects perfectly for Irish Summer Time
                     now_str = datetime.now(ZoneInfo("UTC")).isoformat()
                     
-                    supabase.table("pairings").update({
+                    supabase.table("interclub_pairings").update({
                         "hole": h, "score": sc, "status": "FINISHED" if fin else "LIVE", "leader": new_leader, "updated_at": now_str
                     }).eq("id", p['id']).execute()
                     fetch_all.clear() 
