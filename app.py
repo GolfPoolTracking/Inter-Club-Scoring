@@ -22,6 +22,10 @@ def generate_random_code(length=6):
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="L&B Match Centre", layout="centered", initial_sidebar_state="collapsed")
 
+# --- Error reporting (Sentry) ---
+from sentry_setup import init_sentry  # noqa: E402
+init_sentry()
+
 # --- CRITICAL FIX: JAVASCRIPT KEYBOARD BLOCKER & UNIVERSAL TOGGLE FIX ---
 # Restored safely to components.html to prevent raw text bleeding.
 components.html(
